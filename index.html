@@ -40,7 +40,7 @@ const PLAYER_HEIGHT = 1.6;
 
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 40, 100);
+scene.fog = new THREE.Fog(0x87ceeb, 80, 200);
 
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 200);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -53,30 +53,30 @@ scene.add(ambient);
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(30, 50, 30);
 dirLight.castShadow = true;
-dirLight.shadow.camera.left = -40;
-dirLight.shadow.camera.right = 40;
-dirLight.shadow.camera.top = 40;
-dirLight.shadow.camera.bottom = -40;
+dirLight.shadow.camera.left = -80;
+dirLight.shadow.camera.right = 80;
+dirLight.shadow.camera.top = 80;
+dirLight.shadow.camera.bottom = -80;
 dirLight.shadow.mapSize.set(2048, 2048);
 scene.add(dirLight);
 
-const grassCanvas = document.createElement('canvas');
-grassCanvas.width = grassCanvas.height = 16;
-const gCtx = grassCanvas.getContext('2d');
+const stoneCanvas = document.createElement('canvas');
+stoneCanvas.width = stoneCanvas.height = 16;
+const sCtx = stoneCanvas.getContext('2d');
 for (let x = 0; x < 16; x++) {
   for (let y = 0; y < 16; y++) {
-    const v = 100 + Math.random() * 40;
-    gCtx.fillStyle = `rgb(${v*0.4},${v},${v*0.2})`;
-    gCtx.fillRect(x, y, 1, 1);
+    const v = 80 + Math.random() * 60;
+    sCtx.fillStyle = `rgb(${v},${v},${v})`;
+    sCtx.fillRect(x, y, 1, 1);
   }
 }
-const grassTex = new THREE.CanvasTexture(grassCanvas);
-grassTex.magFilter = THREE.NearestFilter;
-grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
-grassTex.repeat.set(40, 40);
+const stoneTex = new THREE.CanvasTexture(stoneCanvas);
+stoneTex.magFilter = THREE.NearestFilter;
+stoneTex.wrapS = stoneTex.wrapT = THREE.RepeatWrapping;
+stoneTex.repeat.set(80, 80);
 
-const groundGeo = new THREE.BoxGeometry(80, 1, 80);
-const groundMat = new THREE.MeshStandardMaterial({ map: grassTex });
+const groundGeo = new THREE.BoxGeometry(160, 1, 160);
+const groundMat = new THREE.MeshStandardMaterial({ map: stoneTex });
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.position.y = -0.5;
 ground.receiveShadow = true;
@@ -141,7 +141,7 @@ function update(dt) {
 
 const raycaster = new THREE.Raycaster();
 const blockGeo = new THREE.BoxGeometry(1, 1, 1);
-const blockMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+const blockMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
 
 function getBlockIntersects() {
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
