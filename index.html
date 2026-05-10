@@ -22,11 +22,17 @@ canvas { display: block; }
 }
 #crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
 #crosshair::after { height: 2px; width: 100%; top: 50%; transform: translateY(-50%); }
+#stats {
+  position: fixed; top: 10px; left: 10px; color: #fff; font: 14px monospace;
+  background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 3px;
+  pointer-events: none; z-index: 100;
+}
 </style>
 </head>
 <body>
 <div id="blocker"><span>Click to Play</span></div>
 <div id="crosshair"></div>
+<div id="stats">FPS: 0<br>X: 0 Y: 0 Z: 0</div>
 <script type="importmap">
 { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
 </script>
@@ -45,6 +51,8 @@ const PLAYER_HEIGHT_COLLISION = 1.8;
 
 // Block registry for collision detection
 const blocks = new Set();
+// Block registry for rendering (visible blocks)
+const sceneBlocks = new Map(); // key -> mesh
 
 function posToKey(x, y, z) {
   return `${x},${y},${z}`;
@@ -60,6 +68,25 @@ function addBlock(x, y, z) {
 
 function removeBlock(x, y, z) {
   blocks.delete(posToKey(x, y, z));
+}
+
+function isBlockVisible(x, y, z) {
+  // Check if any adjacent position is empty
+  const directions = [
+    [1, 0, 0], [-1, 0, 0],
+    [0, 1, 0], [0, -1, 0],
+    [0, 0, 1], [0, 0, -1]
+  ];
+  
+  for (const [dx, dy, dz] of directions) {
+    const nx = x + dx;
+    const ny = y + dy;
+    const nz = z + dz;
+    if (!hasBlock(nx, ny, nz)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 const scene = new THREE.Scene();
@@ -113,16 +140,139 @@ const stoneBlockMat = new THREE.MeshStandardMaterial({ color: 0x808080 });
 const groundSize = 160;
 const halfGroundSize = groundSize / 2;
 
+// Instanced rendering setup
+const maxInstances = 50000;
+const stoneInstancedMesh = new THREE.InstancedMesh(stoneBlockGeo, stoneBlockMat, maxInstances);
+stoneInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+stoneInstancedMesh.castShadow = true;
+stoneInstancedMesh.receiveShadow = true;
+scene.add(stoneInstancedMesh);
+
+// Initialize all instances to zero scale (invisible)
+const zeroMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
+for (let i = 0; i < maxInstances; i++) {
+  stoneInstancedMesh.setMatrixAt(i, zeroMatrix);
+}
+stoneInstancedMesh.instanceMatrix.needsUpdate = true;
+
+const instanceKeyToId = new Map(); // key -> instanceId
+const instanceIdToKey = new Map(); // instanceId -> key
+let instanceCount = 0;
+
+// Temporary matrix for setting instances
+const tempMatrix = new THREE.Matrix4();
+
+// First pass: add all blocks to collision registry
 for (let x = -halfGroundSize; x < halfGroundSize; x++) {
   for (let z = -halfGroundSize; z < halfGroundSize; z++) {
     for (let y = 0; y < 3; y++) {
-      const block = new THREE.Mesh(stoneBlockGeo, stoneBlockMat);
-      block.position.set(x + 0.5, y + 0.5, z + 0.5);
-      block.castShadow = true;
-      block.receiveShadow = true;
-      scene.add(block);
       addBlock(x, y, z);
     }
+  }
+}
+
+// Helper function to add instance
+function addInstance(x, y, z) {
+  if (instanceCount >= maxInstances) {
+    console.warn('Maximum instances reached');
+    return;
+  }
+  const key = posToKey(x, y, z);
+  const id = instanceCount++;
+  
+  const matrix = new THREE.Matrix4();
+  matrix.setPosition(x + 0.5, y + 0.5, z + 0.5);
+  stoneInstancedMesh.setMatrixAt(id, matrix);
+  stoneInstancedMesh.instanceMatrix.needsUpdate = true;
+  
+  instanceKeyToId.set(key, id);
+  instanceIdToKey.set(id, key);
+  sceneBlocks.set(key, {type: 'instanced', id});
+}
+
+// Helper function to remove instance
+function removeInstance(key) {
+  const entry = sceneBlocks.get(key);
+  if (!entry || entry.type !== 'instanced') return;
+  const id = entry.id;
+  
+  // Move last instance to this position
+  const lastId = instanceCount - 1;
+  if (id !== lastId) {
+    const lastKey = instanceIdToKey.get(lastId);
+    const lastMatrix = new THREE.Matrix4();
+    stoneInstancedMesh.getMatrixAt(lastId, lastMatrix);
+    stoneInstancedMesh.setMatrixAt(id, lastMatrix);
+    instanceKeyToId.set(lastKey, id);
+    instanceIdToKey.set(id, lastKey);
+    // Update sceneBlocks for moved instance
+    sceneBlocks.set(lastKey, {type: 'instanced', id});
+  }
+  
+  // Clear last instance with zero scale
+  const zeroMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
+  stoneInstancedMesh.setMatrixAt(lastId, zeroMatrix);
+  stoneInstancedMesh.instanceMatrix.needsUpdate = true;
+  
+  instanceCount--;
+  instanceKeyToId.delete(key);
+  instanceIdToKey.delete(lastId);
+  sceneBlocks.delete(key);
+}
+
+// Second pass: generate only visible blocks using instancing
+for (let x = -halfGroundSize; x < halfGroundSize; x++) {
+  for (let z = -halfGroundSize; z < halfGroundSize; z++) {
+    for (let y = 0; y < 3; y++) {
+      if (isBlockVisible(x, y, z)) {
+        addInstance(x, y, z);
+      }
+    }
+  }
+}
+
+// Generate random structures on the ground
+const structureCoords = [
+  [0, 0, 0], [0, 1, 0], [0, 2, 0], [1, 2, 0], [-1, 2, 0], [0, 3, 0], [0, 0, 1], [0, 0, 2]
+];
+
+// Rotate coordinates around Y axis (0, 90, 180, 270 degrees)
+function rotateCoord(x, z, rotation) {
+  switch (rotation) {
+    case 0: return [x, z]; // 0 degrees
+    case 1: return [z, -x]; // 90 degrees
+    case 2: return [-x, -z]; // 180 degrees
+    case 3: return [-z, x]; // 270 degrees
+    default: return [x, z];
+  }
+}
+
+const structureCount = 15; // Number of structures to generate
+const minCoord = -halfGroundSize + 2; // Keep away from edges
+const maxCoord = halfGroundSize - 2;
+
+for (let i = 0; i < structureCount; i++) {
+  const baseX = Math.floor(Math.random() * (maxCoord - minCoord)) + minCoord;
+  const baseZ = Math.floor(Math.random() * (maxCoord - minCoord)) + minCoord;
+  const baseY = 3; // On top of the 3-layer ground
+  const rotation = Math.floor(Math.random() * 4); // 0, 1, 2, or 3
+  
+  for (const [dx, dy, dz] of structureCoords) {
+    const [rotatedDx, rotatedDz] = rotateCoord(dx, dz, rotation);
+    const x = baseX + rotatedDx;
+    const y = baseY + dy;
+    const z = baseZ + rotatedDz;
+    
+    // Add to collision registry
+    addBlock(x, y, z);
+    
+    // Create independent mesh for structure block
+    const block = new THREE.Mesh(stoneBlockGeo, stoneBlockMat);
+    block.position.set(x + 0.5, y + 0.5, z + 0.5);
+    block.castShadow = true;
+    block.receiveShadow = true;
+    scene.add(block);
+    sceneBlocks.set(posToKey(x, y, z), block);
   }
 }
 
@@ -212,12 +362,43 @@ function update(dt) {
 }
 
 const raycaster = new THREE.Raycaster();
-const blockGeo = new THREE.BoxGeometry(1, 1, 1);
-const blockMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
+const frustum = new THREE.Frustum();
+const projScreenMatrix = new THREE.Matrix4();
 
 function getBlockIntersects() {
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-  return raycaster.intersectObjects(scene.children, false).filter(i => i.object !== ground);
+  const hits = raycaster.intersectObjects(scene.children, false);
+  
+  const result = [];
+  for (const hit of hits) {
+    if (hit.object === ground) continue;
+    
+    if (hit.object === stoneInstancedMesh) {
+      // Instanced block hit
+      const instanceId = hit.instanceId;
+      const key = instanceIdToKey.get(instanceId);
+      if (!key) continue;
+      
+      const [x, y, z] = key.split(',').map(Number);
+      const virtualObject = {
+        position: new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5),
+        isInstanced: true,
+        block: { x, y, z }
+      };
+      
+      result.push({
+        object: virtualObject,
+        face: hit.face,
+        point: hit.point,
+        distance: hit.distance
+      });
+    } else {
+      // Regular mesh hit
+      result.push(hit);
+    }
+  }
+  
+  return result;
 }
 
 function getGroundIntersect() {
@@ -238,12 +419,16 @@ function placeBlock(pos) {
     return; // Cannot place block here
   }
   
-  const block = new THREE.Mesh(blockGeo, blockMat);
-  block.position.copy(pos);
+  // Add to collision registry
+  addBlock(x, y, z);
+  
+  // Always generate block (placed blocks are always visible)
+  const block = new THREE.Mesh(stoneBlockGeo, stoneBlockMat);
+  block.position.set(x + 0.5, y + 0.5, z + 0.5);
   block.castShadow = true;
   block.receiveShadow = true;
   scene.add(block);
-  addBlock(x, y, z);
+  sceneBlocks.set(posToKey(x, y, z), block);
 }
 
 // Collision detection functions
@@ -301,15 +486,135 @@ function checkCollision(pos) {
   return null;
 }
 
+// Raycast against blocks (for instanced mesh)
+function raycastBlocks(origin, direction, maxDistance = 10) {
+  // Normalize direction
+  direction.normalize();
+  
+  // Current block coordinates
+  let x = Math.floor(origin.x);
+  let y = Math.floor(origin.y);
+  let z = Math.floor(origin.z);
+  
+  // Step direction
+  const stepX = direction.x > 0 ? 1 : -1;
+  const stepY = direction.y > 0 ? 1 : -1;
+  const stepZ = direction.z > 0 ? 1 : -1;
+  
+  // Distance to next block boundary
+  const tDeltaX = Math.abs(1 / direction.x);
+  const tDeltaY = Math.abs(1 / direction.y);
+  const tDeltaZ = Math.abs(1 / direction.z);
+  
+  // Initial tMax values
+  let tMaxX = direction.x > 0 ? (x + 1 - origin.x) / direction.x : (x - origin.x) / direction.x;
+  let tMaxY = direction.y > 0 ? (y + 1 - origin.y) / direction.y : (y - origin.y) / direction.y;
+  let tMaxZ = direction.z > 0 ? (z + 1 - origin.z) / direction.z : (z - origin.z) / direction.z;
+  
+  let t = 0;
+  let face = null; // face normal of hit
+  
+  while (t < maxDistance) {
+    // Check current block
+    if (hasBlock(x, y, z)) {
+      // Calculate hit point and face normal
+      const hitPoint = origin.clone().add(direction.clone().multiplyScalar(t));
+      return {
+        point: hitPoint,
+        face: face || new THREE.Vector3(0, 1, 0), // default face
+        block: { x, y, z },
+        distance: t
+      };
+    }
+    
+    // Move to next block
+    if (tMaxX < tMaxY) {
+      if (tMaxX < tMaxZ) {
+        x += stepX;
+        t = tMaxX;
+        tMaxX += tDeltaX;
+        face = new THREE.Vector3(-stepX, 0, 0);
+      } else {
+        z += stepZ;
+        t = tMaxZ;
+        tMaxZ += tDeltaZ;
+        face = new THREE.Vector3(0, 0, -stepZ);
+      }
+    } else {
+      if (tMaxY < tMaxZ) {
+        y += stepY;
+        t = tMaxY;
+        tMaxY += tDeltaY;
+        face = new THREE.Vector3(0, -stepY, 0);
+      } else {
+        z += stepZ;
+        t = tMaxZ;
+        tMaxZ += tDeltaZ;
+        face = new THREE.Vector3(0, 0, -stepZ);
+      }
+    }
+  }
+  
+  return null;
+}
+
 document.addEventListener('mousedown', e => {
   if (!locked) return;
   const blockHits = getBlockIntersects();
   if (blockHits.length > 0) {
     const hit = blockHits[0];
     if (e.button === 0) {
-      const pos = hit.object.position;
-      removeBlock(Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z));
-      scene.remove(hit.object);
+      let bx, by, bz;
+      
+      if (hit.object.isInstanced) {
+        // Instanced block
+        bx = hit.object.block.x;
+        by = hit.object.block.y;
+        bz = hit.object.block.z;
+        const key = posToKey(bx, by, bz);
+        
+        // Remove from collision registry
+        removeBlock(bx, by, bz);
+        // Remove from instanced mesh
+        removeInstance(key);
+      } else {
+        // Regular mesh block
+        const pos = hit.object.position;
+        bx = Math.floor(pos.x);
+        by = Math.floor(pos.y);
+        bz = Math.floor(pos.z);
+        const key = posToKey(bx, by, bz);
+        
+        // Remove from collision registry
+        removeBlock(bx, by, bz);
+        // Remove from scene registry
+        sceneBlocks.delete(key);
+        // Remove from scene
+        scene.remove(hit.object);
+      }
+      
+      // Update neighbor visibility
+      const directions = [
+        [1, 0, 0], [-1, 0, 0],
+        [0, 1, 0], [0, -1, 0],
+        [0, 0, 1], [0, 0, -1]
+      ];
+      
+      for (const [dx, dy, dz] of directions) {
+        const nx = bx + dx;
+        const ny = by + dy;
+        const nz = bz + dz;
+        const key = posToKey(nx, ny, nz);
+        
+        // If neighbor exists in collision registry but not in scene
+        if (hasBlock(nx, ny, nz) && !sceneBlocks.has(key)) {
+          // Check if now visible
+          if (isBlockVisible(nx, ny, nz)) {
+            // Generate block - add as instance
+            addInstance(nx, ny, nz);
+          }
+        }
+      }
     } else if (e.button === 2) {
       const newPos = hit.object.position.clone().add(hit.face.normal);
       placeBlock(newPos);
@@ -327,9 +632,46 @@ document.addEventListener('mousedown', e => {
 document.addEventListener('contextmenu', e => e.preventDefault());
 
 const clock = new THREE.Clock();
+const statsElement = document.getElementById('stats');
+let fpsFrames = 0;
+let fpsTime = 0;
+let fpsDisplay = 'FPS: 0';
+const tempBox3 = new THREE.Box3();
+const tempMin = new THREE.Vector3();
+const tempMax = new THREE.Vector3();
+
 function animate() {
   requestAnimationFrame(animate);
-  update(Math.min(clock.getDelta(), 0.05));
+  const delta = Math.min(clock.getDelta(), 0.05);
+  update(delta);
+  
+  // Update frustum for culling
+  projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  frustum.setFromProjectionMatrix(projScreenMatrix);
+  
+  // Cull blocks outside frustum with margin
+  const margin = 0.2;
+  for (const [key, mesh] of sceneBlocks) {
+    const [x, y, z] = key.split(',').map(Number);
+    tempMin.set(x - margin, y - margin, z - margin);
+    tempMax.set(x + 1 + margin, y + 1 + margin, z + 1 + margin);
+    tempBox3.set(tempMin, tempMax);
+    mesh.visible = frustum.intersectsBox(tempBox3);
+  }
+  
+  // Update stats
+  fpsFrames++;
+  fpsTime += delta;
+  if (fpsTime >= 1.0) {
+    const fps = Math.round(fpsFrames / fpsTime);
+    fpsDisplay = `FPS: ${fps}`;
+    fpsFrames = 0;
+    fpsTime = 0;
+  }
+  
+  const pos = player.position;
+  statsElement.innerHTML = `${fpsDisplay}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}`;
+  
   renderer.render(scene, camera);
 }
 animate();
