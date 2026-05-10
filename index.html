@@ -141,7 +141,7 @@ const groundSize = 160;
 const halfGroundSize = groundSize / 2;
 
 // Instanced rendering setup
-const maxInstances = 50000;
+const maxInstances = 200000;
 const stoneInstancedMesh = new THREE.InstancedMesh(stoneBlockGeo, stoneBlockMat, maxInstances);
 stoneInstancedMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
 stoneInstancedMesh.castShadow = true;
@@ -165,7 +165,7 @@ const tempMatrix = new THREE.Matrix4();
 // First pass: add all blocks to collision registry
 for (let x = -halfGroundSize; x < halfGroundSize; x++) {
   for (let z = -halfGroundSize; z < halfGroundSize; z++) {
-    for (let y = 0; y < 3; y++) {
+    for (let y = 0; y < 64; y++) {
       addBlock(x, y, z);
     }
   }
@@ -223,7 +223,7 @@ function removeInstance(key) {
 // Second pass: generate only visible blocks using instancing
 for (let x = -halfGroundSize; x < halfGroundSize; x++) {
   for (let z = -halfGroundSize; z < halfGroundSize; z++) {
-    for (let y = 0; y < 3; y++) {
+    for (let y = 0; y < 64; y++) {
       if (isBlockVisible(x, y, z)) {
         addInstance(x, y, z);
       }
@@ -254,7 +254,7 @@ const maxCoord = halfGroundSize - 2;
 for (let i = 0; i < structureCount; i++) {
   const baseX = Math.floor(Math.random() * (maxCoord - minCoord)) + minCoord;
   const baseZ = Math.floor(Math.random() * (maxCoord - minCoord)) + minCoord;
-  const baseY = 3; // On top of the 3-layer ground
+  const baseY = 64; // On top of ground layers
   const rotation = Math.floor(Math.random() * 4); // 0, 1, 2, or 3
   
   for (const [dx, dy, dz] of structureCoords) {
@@ -283,7 +283,7 @@ pitch.rotation.order = 'YXZ';
 const player = new THREE.Group();
 player.add(pitch);
 pitch.add(camera);
-player.position.y = 3; // Spawn on top of 3 stone layers
+player.position.y = 64; // Spawn above ground layers
 scene.add(player);
 
 let velocityY = 0;
@@ -645,18 +645,28 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
   update(delta);
   
-  // Update frustum for culling
-  projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-  frustum.setFromProjectionMatrix(projScreenMatrix);
+  // Update frustum for culling (temporarily disabled for debugging)
+  // projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
+  // frustum.setFromProjectionMatrix(projScreenMatrix);
   
-  // Cull blocks outside frustum with margin
-  const margin = 0.2;
-  for (const [key, mesh] of sceneBlocks) {
-    const [x, y, z] = key.split(',').map(Number);
-    tempMin.set(x - margin, y - margin, z - margin);
-    tempMax.set(x + 1 + margin, y + 1 + margin, z + 1 + margin);
-    tempBox3.set(tempMin, tempMax);
-    mesh.visible = frustum.intersectsBox(tempBox3);
+  // Cull blocks outside frustum with margin (temporarily disabled)
+  // const margin = 0.2;
+  // for (const [key, mesh] of sceneBlocks) {
+  //   const [x, y, z] = key.split(',').map(Number);
+  //   tempMin.set(x - margin, y - margin, z - margin);
+  //   tempMax.set(x + 1 + margin, y + 1 + margin, z + 1 + margin);
+  //   tempBox3.set(tempMin, tempMax);
+  //   mesh.visible = frustum.intersectsBox(tempBox3);
+  // }
+  
+  // Ensure all blocks are visible (for debugging)
+  for (const [key, value] of sceneBlocks) {
+    if (value.type === 'instanced') {
+      // For instanced blocks, ensure matrix is set (already handled)
+    } else {
+      // For independent meshes, set visible
+      value.visible = true;
+    }
   }
   
   // Update stats
