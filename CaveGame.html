@@ -38,33 +38,9 @@ const JUMP_SPEED = 10;
 const MOVE_SPEED = 8;
 const PLAYER_HEIGHT = 1.6;
 
-// Collision system constants
-const PLAYER_WIDTH = 0.6;
-const PLAYER_DEPTH = 0.6;
-const PLAYER_HEIGHT_COLLISION = 1.8;
-
-// Block registry for collision detection
-const blocks = new Set();
-
-function posToKey(x, y, z) {
-  return `${x},${y},${z}`;
-}
-
-function hasBlock(x, y, z) {
-  return blocks.has(posToKey(x, y, z));
-}
-
-function addBlock(x, y, z) {
-  blocks.add(posToKey(x, y, z));
-}
-
-function removeBlock(x, y, z) {
-  blocks.delete(posToKey(x, y, z));
-}
-
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
-scene.fog = new THREE.Fog(0x87ceeb, 80, 200);
+scene.fog = new THREE.Fog(0x87ceeb, 40, 100);
 
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 200);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -77,30 +53,30 @@ scene.add(ambient);
 const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
 dirLight.position.set(30, 50, 30);
 dirLight.castShadow = true;
-dirLight.shadow.camera.left = -80;
-dirLight.shadow.camera.right = 80;
-dirLight.shadow.camera.top = 80;
-dirLight.shadow.camera.bottom = -80;
+dirLight.shadow.camera.left = -40;
+dirLight.shadow.camera.right = 40;
+dirLight.shadow.camera.top = 40;
+dirLight.shadow.camera.bottom = -40;
 dirLight.shadow.mapSize.set(2048, 2048);
 scene.add(dirLight);
 
-const stoneCanvas = document.createElement('canvas');
-stoneCanvas.width = stoneCanvas.height = 16;
-const sCtx = stoneCanvas.getContext('2d');
+const grassCanvas = document.createElement('canvas');
+grassCanvas.width = grassCanvas.height = 16;
+const gCtx = grassCanvas.getContext('2d');
 for (let x = 0; x < 16; x++) {
   for (let y = 0; y < 16; y++) {
-    const v = 80 + Math.random() * 60;
-    sCtx.fillStyle = `rgb(${v},${v},${v})`;
-    sCtx.fillRect(x, y, 1, 1);
+    const v = 100 + Math.random() * 40;
+    gCtx.fillStyle = `rgb(${v*0.4},${v},${v*0.2})`;
+    gCtx.fillRect(x, y, 1, 1);
   }
 }
-const stoneTex = new THREE.CanvasTexture(stoneCanvas);
-stoneTex.magFilter = THREE.NearestFilter;
-stoneTex.wrapS = stoneTex.wrapT = THREE.RepeatWrapping;
-stoneTex.repeat.set(80, 80);
+const grassTex = new THREE.CanvasTexture(grassCanvas);
+grassTex.magFilter = THREE.NearestFilter;
+grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
+grassTex.repeat.set(40, 40);
 
-const groundGeo = new THREE.BoxGeometry(160, 1, 160);
-const groundMat = new THREE.MeshStandardMaterial({ map: stoneTex });
+const groundGeo = new THREE.BoxGeometry(80, 1, 80);
+const groundMat = new THREE.MeshStandardMaterial({ map: grassTex });
 const ground = new THREE.Mesh(groundGeo, groundMat);
 ground.position.y = -0.5;
 ground.receiveShadow = true;
@@ -143,48 +119,21 @@ function update(dt) {
   if (keys['KeyS']) dir.z += 1;
   if (keys['KeyA']) dir.x -= 1;
   if (keys['KeyD']) dir.x += 1;
-  
   if (dir.length() > 0) {
     dir.normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
-    const moveX = dir.x * MOVE_SPEED * dt;
-    const moveZ = dir.z * MOVE_SPEED * dt;
-    
-    // Try moving in X direction
-    const oldX = player.position.x;
-    player.position.x += moveX;
-    if (checkCollision(player.position)) {
-      player.position.x = oldX; // revert
-    }
-    
-    // Try moving in Z direction
-    const oldZ = player.position.z;
-    player.position.z += moveZ;
-    if (checkCollision(player.position)) {
-      player.position.z = oldZ; // revert
-    }
+    player.position.addScaledVector(dir, MOVE_SPEED * dt);
   }
-  
-  // Jump and gravity
+
   if (keys['Space'] && onGround) {
     velocityY = JUMP_SPEED;
     onGround = false;
   }
-  
+
   velocityY += GRAVITY * dt;
-  const oldY = player.position.y;
   player.position.y += velocityY * dt;
-  
-  // Check collision with blocks
-  if (checkCollision(player.position)) {
-    // Revert Y position
-    player.position.y = oldY;
-    velocityY = 0;
-    onGround = true;
-  }
-  
-  // Ground collision
-  if (player.position.y <= 0) {
-    player.position.y = 0;
+
+  if (player.position.y <= PLAYER_HEIGHT) {
+    player.position.y = PLAYER_HEIGHT;
     velocityY = 0;
     onGround = true;
   }
@@ -192,7 +141,7 @@ function update(dt) {
 
 const raycaster = new THREE.Raycaster();
 const blockGeo = new THREE.BoxGeometry(1, 1, 1);
-const blockMat = new THREE.MeshStandardMaterial({ color: 0xFFFFFF });
+const blockMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
 
 function getBlockIntersects() {
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -206,78 +155,11 @@ function getGroundIntersect() {
 }
 
 function placeBlock(pos) {
-  const x = Math.floor(pos.x);
-  const y = Math.floor(pos.y);
-  const z = Math.floor(pos.z);
-  
-  // Check if block would collide with player
-  const blockAABB = getBlockAABB(x, y, z);
-  const playerAABB = getPlayerAABB(player.position);
-  if (aabbIntersect(playerAABB, blockAABB)) {
-    return; // Cannot place block here
-  }
-  
   const block = new THREE.Mesh(blockGeo, blockMat);
   block.position.copy(pos);
   block.castShadow = true;
   block.receiveShadow = true;
   scene.add(block);
-  addBlock(x, y, z);
-}
-
-// Collision detection functions
-function getPlayerAABB(pos) {
-  const halfWidth = PLAYER_WIDTH / 2;
-  const halfDepth = PLAYER_DEPTH / 2;
-  return {
-    minX: pos.x - halfWidth,
-    maxX: pos.x + halfWidth,
-    minY: pos.y,
-    maxY: pos.y + PLAYER_HEIGHT_COLLISION,
-    minZ: pos.z - halfDepth,
-    maxZ: pos.z + halfDepth
-  };
-}
-
-function getBlockAABB(x, y, z) {
-  return {
-    minX: x,
-    maxX: x + 1,
-    minY: y,
-    maxY: y + 1,
-    minZ: z,
-    maxZ: z + 1
-  };
-}
-
-function aabbIntersect(a, b) {
-  return a.minX < b.maxX && a.maxX > b.minX &&
-         a.minY < b.maxY && a.maxY > b.minY &&
-         a.minZ < b.maxZ && a.maxZ > b.minZ;
-}
-
-function checkCollision(pos) {
-  const playerAABB = getPlayerAABB(pos);
-  const minBX = Math.floor(playerAABB.minX);
-  const maxBX = Math.floor(playerAABB.maxX);
-  const minBY = Math.floor(playerAABB.minY);
-  const maxBY = Math.floor(playerAABB.maxY);
-  const minBZ = Math.floor(playerAABB.minZ);
-  const maxBZ = Math.floor(playerAABB.maxZ);
-  
-  for (let x = minBX; x <= maxBX; x++) {
-    for (let y = minBY; y <= maxBY; y++) {
-      for (let z = minBZ; z <= maxBZ; z++) {
-        if (hasBlock(x, y, z)) {
-          const blockAABB = getBlockAABB(x, y, z);
-          if (aabbIntersect(playerAABB, blockAABB)) {
-            return { x, y, z, blockAABB };
-          }
-        }
-      }
-    }
-  }
-  return null;
 }
 
 document.addEventListener('mousedown', e => {
@@ -286,8 +168,6 @@ document.addEventListener('mousedown', e => {
   if (blockHits.length > 0) {
     const hit = blockHits[0];
     if (e.button === 0) {
-      const pos = hit.object.position;
-      removeBlock(Math.floor(pos.x), Math.floor(pos.y), Math.floor(pos.z));
       scene.remove(hit.object);
     } else if (e.button === 2) {
       const newPos = hit.object.position.clone().add(hit.face.normal);
