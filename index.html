@@ -231,6 +231,81 @@ for (let x = -halfGroundSize; x < halfGroundSize; x++) {
   }
 }
 
+// Cave generation parameters
+const caveCount = 20; // Number of caves
+const minCaveRadius = 2;
+const maxCaveRadius = 5;
+const minCaveY = 1; // Minimum Y for cave center (avoid surface)
+const maxCaveY = 62; // Maximum Y for cave center (avoid surface)
+const caveCenters = []; // Store cave center positions
+
+// Generate caves by hollowing out spherical regions
+for (let i = 0; i < caveCount; i++) {
+  const caveX = Math.floor(Math.random() * (groundSize - 10)) - (groundSize / 2 - 5);
+  const caveZ = Math.floor(Math.random() * (groundSize - 10)) - (groundSize / 2 - 5);
+  const caveY = Math.floor(Math.random() * (maxCaveY - minCaveY)) + minCaveY;
+  const caveRadius = Math.floor(Math.random() * (maxCaveRadius - minCaveRadius)) + minCaveRadius;
+  
+  // Store cave center
+  caveCenters.push({ x: caveX, y: caveY, z: caveZ });
+  
+  // Remove blocks within sphere
+  const radiusSq = caveRadius * caveRadius;
+  for (let x = caveX - caveRadius; x <= caveX + caveRadius; x++) {
+    for (let y = caveY - caveRadius; y <= caveY + caveRadius; y++) {
+      for (let z = caveZ - caveRadius; z <= caveZ + caveRadius; z++) {
+        const dx = x - caveX;
+        const dy = y - caveY;
+        const dz = z - caveZ;
+        const distSq = dx * dx + dy * dy + dz * dz;
+        
+        if (distSq <= radiusSq) {
+          const key = posToKey(x, y, z);
+          if (hasBlock(x, y, z)) {
+            // Remove from collision registry
+            removeBlock(x, y, z);
+            
+            // Remove from rendering
+            const sceneEntry = sceneBlocks.get(key);
+            if (sceneEntry) {
+              if (sceneEntry.type === 'instanced') {
+                removeInstance(key);
+              } else {
+                // Independent mesh
+                scene.remove(sceneEntry);
+                sceneBlocks.delete(key);
+              }
+            }
+            
+            // Update visibility of neighboring blocks
+            const directions = [
+              [1, 0, 0], [-1, 0, 0],
+              [0, 1, 0], [0, -1, 0],
+              [0, 0, 1], [0, 0, -1]
+            ];
+            
+            for (const [dx, dy, dz] of directions) {
+              const nx = x + dx;
+              const ny = y + dy;
+              const nz = z + dz;
+              const nkey = posToKey(nx, ny, nz);
+              
+              // If neighbor exists and not already rendered
+              if (hasBlock(nx, ny, nz) && !sceneBlocks.has(nkey)) {
+                // Check if now visible
+                if (isBlockVisible(nx, ny, nz)) {
+                  // Add as instance
+                  addInstance(nx, ny, nz);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
 // Generate random structures on the ground
 const structureCoords = [
   [0, 0, 0], [0, 1, 0], [0, 2, 0], [1, 2, 0], [-1, 2, 0], [0, 3, 0], [0, 0, 1], [0, 0, 2]
@@ -283,7 +358,14 @@ pitch.rotation.order = 'YXZ';
 const player = new THREE.Group();
 player.add(pitch);
 pitch.add(camera);
-player.position.y = 64; // Spawn above ground layers
+
+// Spawn player in a random cave if available, otherwise above ground
+if (caveCenters.length > 0) {
+  const spawnCave = caveCenters[Math.floor(Math.random() * caveCenters.length)];
+  player.position.set(spawnCave.x + 0.5, spawnCave.y + 0.5, spawnCave.z + 0.5);
+} else {
+  player.position.y = 64; // Spawn above ground layers
+}
 scene.add(player);
 
 let velocityY = 0;
