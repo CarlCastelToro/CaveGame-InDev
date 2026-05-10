@@ -407,6 +407,13 @@ let health = 20;
 let maxHealth = 20;
 let spawnPosition = player.position.clone(); // Store spawn position for respawn
 
+// Oxygen system
+let oxygen = 100;
+let maxOxygen = 100;
+const idealSpaceSize = 10; // Linear midpoint for space size
+const oxygenDamageTimer = 10; // Seconds between damage when oxygen is 0
+let oxygenDamageCounter = 0;
+
 let velocityY = 0;
 let onGround = false;
 const keys = {};
@@ -428,6 +435,40 @@ document.addEventListener('mousemove', e => {
   pitch.rotation.x -= e.movementY * 0.002;
   pitch.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch.rotation.x));
 });
+
+// Function to get space size around player
+function getSpaceSize(position) {
+  // Count air blocks in a sphere around player (sampled for performance)
+  const checkRadius = 8;
+  const step = 2; // Check every other block
+  const px = Math.floor(position.x);
+  const py = Math.floor(position.y);
+  const pz = Math.floor(position.z);
+  
+  let airCount = 0;
+  let totalBlocks = 0;
+  
+  for (let x = px - checkRadius; x <= px + checkRadius; x += step) {
+    for (let y = py - checkRadius; y <= py + checkRadius; y += step) {
+      for (let z = pz - checkRadius; z <= pz + checkRadius; z += step) {
+        const dx = x - px;
+        const dy = y - py;
+        const dz = z - pz;
+        const distSq = dx * dx + dy * dy + dz * dz;
+        
+        if (distSq <= checkRadius * checkRadius) {
+          totalBlocks++;
+          if (!hasBlock(x, y, z)) {
+            airCount++;
+          }
+        }
+      }
+    }
+  }
+  
+  // Return air ratio (0 to 1), scaled to 0-20 range
+  return (airCount / totalBlocks) * 20;
+}
 
 function update(dt) {
   const dir = new THREE.Vector3();
@@ -454,6 +495,34 @@ function update(dt) {
     if (checkCollision(player.position)) {
       player.position.z = oldZ; // revert
     }
+  }
+  
+  // Update oxygen
+  const spaceSize = getSpaceSize(player.position);
+  let oxygenRate = (spaceSize - idealSpaceSize) * 0.1; // Linear relationship
+  
+  // Apply health bonus to consumption rate
+  if (oxygenRate < 0) {
+    const healthLost = maxHealth - health;
+    oxygenRate *= (1 + 0.03 * healthLost); // 3% increase per health lost
+  }
+  
+  oxygen += oxygenRate * dt;
+  oxygen = Math.max(0, Math.min(maxOxygen, oxygen));
+  
+  // Oxygen damage
+  if (oxygen <= 0) {
+    oxygenDamageCounter += dt;
+    if (oxygenDamageCounter >= oxygenDamageTimer) {
+      oxygenDamageCounter -= oxygenDamageTimer;
+      health -= 1;
+      if (health <= 0) {
+        health = 0;
+        respawnPlayer();
+      }
+    }
+  } else {
+    oxygenDamageCounter = 0; // Reset counter when oxygen is available
   }
   
   // Jump and gravity
@@ -505,11 +574,23 @@ function update(dt) {
 }
 
 function respawnPlayer() {
-  // Reset health
+  // Reset health and oxygen
   health = maxHealth;
+  oxygen = maxOxygen;
+  oxygenDamageCounter = 0;
   
-  // Teleport to spawn position
-  player.position.copy(spawnPosition);
+  // Find safe spawn position
+  let spawnX = Math.floor(spawnPosition.x);
+  let spawnY = Math.floor(spawnPosition.y);
+  let spawnZ = Math.floor(spawnPosition.z);
+  
+  // If spawn position is blocked, move up until we find air
+  while (hasBlock(spawnX, spawnY, spawnZ) && spawnY < 100) {
+    spawnY++;
+  }
+  
+  // Set player position to safe spot
+  player.position.set(spawnX + 0.5, spawnY + 0.5, spawnZ + 0.5);
   
   // Reset velocity
   velocityY = 0;
@@ -835,7 +916,7 @@ function animate() {
   }
   
   const pos = player.position;
-  statsElement.innerHTML = `${fpsDisplay}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Health: ${health}/${maxHealth}`;
+  statsElement.innerHTML = `${fpsDisplay}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Health: ${health}/${maxHealth}<br>Oxygen: ${Math.round(oxygen)}/${maxOxygen}`;
   
   renderer.render(scene, camera);
 }
