@@ -265,79 +265,198 @@ for (let x = -halfGroundSize; x < halfGroundSize; x++) {
   }
 }
 
-// Cave generation parameters
-const caveCount = 20; // Number of caves
-const minCaveRadius = 2;
-const maxCaveRadius = 5;
-const minCaveY = 1; // Minimum Y for cave center (avoid surface)
-const maxCaveY = 62; // Maximum Y for cave center (avoid surface)
-const caveCenters = []; // Store cave center positions
+// Cave generation parameters - lava tube style caves
+const caveCount = 15; // Number of cave systems
+const minTunnelLength = 30;
+const maxTunnelLength = 100;
+const minCaveY = 5; // Minimum Y for cave start
+const maxCaveY = 58; // Maximum Y for cave start
+const caveCenters = []; // Store cave start positions
 
-// Generate caves by hollowing out spherical regions
-for (let i = 0; i < caveCount; i++) {
-  const caveX = Math.floor(Math.random() * (groundSize - 10)) - (groundSize / 2 - 5);
-  const caveZ = Math.floor(Math.random() * (groundSize - 10)) - (groundSize / 2 - 5);
-  const caveY = Math.floor(Math.random() * (maxCaveY - minCaveY)) + minCaveY;
-  const caveRadius = Math.floor(Math.random() * (maxCaveRadius - minCaveRadius)) + minCaveRadius;
-  
-  // Store cave center
-  caveCenters.push({ x: caveX, y: caveY, z: caveZ });
-  
-  // Remove blocks within sphere
-  const radiusSq = caveRadius * caveRadius;
-  for (let x = caveX - caveRadius; x <= caveX + caveRadius; x++) {
-    for (let y = caveY - caveRadius; y <= caveY + caveRadius; y++) {
-      for (let z = caveZ - caveRadius; z <= caveZ + caveRadius; z++) {
-        const dx = x - caveX;
-        const dy = y - caveY;
-        const dz = z - caveZ;
-        const distSq = dx * dx + dy * dy + dz * dz;
-        
-        if (distSq <= radiusSq) {
-          const key = posToKey(x, y, z);
-          if (hasBlock(x, y, z)) {
-            // Remove from collision registry
-            removeBlock(x, y, z);
-            
-            // Remove from rendering
-            const sceneEntry = sceneBlocks.get(key);
-            if (sceneEntry) {
-              if (sceneEntry.type === 'instanced') {
-                removeInstance(key);
-              } else {
-                // Independent mesh
-                scene.remove(sceneEntry);
-                sceneBlocks.delete(key);
-              }
-            }
-            
-            // Update visibility of neighboring blocks
-            const directions = [
-              [1, 0, 0], [-1, 0, 0],
-              [0, 1, 0], [0, -1, 0],
-              [0, 0, 1], [0, 0, -1]
-            ];
-            
-            for (const [dx, dy, dz] of directions) {
-              const nx = x + dx;
-              const ny = y + dy;
-              const nz = z + dz;
-              const nkey = posToKey(nx, ny, nz);
-              
-              // If neighbor exists and not already rendered
-              if (hasBlock(nx, ny, nz) && !sceneBlocks.has(nkey)) {
-                // Check if now visible
-                if (isBlockVisible(nx, ny, nz)) {
-                  // Add as instance
-                  addInstance(nx, ny, nz);
-                }
-              }
-            }
+// Remove a block and update neighbors
+function removeCaveBlock(x, y, z) {
+  const key = posToKey(x, y, z);
+  if (hasBlock(x, y, z)) {
+    removeBlock(x, y, z);
+    
+    const sceneEntry = sceneBlocks.get(key);
+    if (sceneEntry) {
+      if (sceneEntry.type === 'instanced') {
+        removeInstance(key);
+      } else {
+        scene.remove(sceneEntry);
+        sceneBlocks.delete(key);
+      }
+    }
+    
+    // Update neighbor visibility
+    const directions = [
+      [1, 0, 0], [-1, 0, 0],
+      [0, 1, 0], [0, -1, 0],
+      [0, 0, 1], [0, 0, -1]
+    ];
+    
+    for (const [dx, dy, dz] of directions) {
+      const nx = x + dx;
+      const ny = y + dy;
+      const nz = z + dz;
+      const nkey = posToKey(nx, ny, nz);
+      
+      if (hasBlock(nx, ny, nz) && !sceneBlocks.has(nkey)) {
+        if (isBlockVisible(nx, ny, nz)) {
+          addInstance(nx, ny, nz);
+        }
+      }
+    }
+  }
+}
+
+// Dig a sphere at position
+function digSphere(cx, cy, cz, radius) {
+  const radiusSq = radius * radius;
+  for (let x = Math.floor(cx - radius); x <= Math.ceil(cx + radius); x++) {
+    for (let y = Math.floor(cy - radius); y <= Math.ceil(cy + radius); y++) {
+      for (let z = Math.floor(cz - radius); z <= Math.ceil(cz + radius); z++) {
+        const dx = x - cx;
+        const dy = y - cy;
+        const dz = z - cz;
+        if (dx * dx + dy * dy + dz * dz <= radiusSq) {
+          if (x >= -halfGroundSize && x < halfGroundSize &&
+              z >= -halfGroundSize && z < halfGroundSize &&
+              y >= 3 && y < 64) { // Don't dig below y=3 to preserve ground
+            removeCaveBlock(x, y, z);
           }
         }
       }
     }
   }
+}
+
+// Generate a single lava tube cave
+function generateLavaTube(startX, startY, startZ) {
+  const tunnelLength = minTunnelLength + Math.floor(Math.random() * (maxTunnelLength - minTunnelLength));
+  
+  let x = startX;
+  let y = startY;
+  let z = startZ;
+  
+  // Track a good spawn point (middle of tunnel)
+  let spawnX = startX;
+  let spawnY = startY;
+  let spawnZ = startZ;
+  const middleStep = Math.floor(tunnelLength / 2);
+  
+  // Direction vectors
+  let dx = 0;
+  let dz = 0;
+  let dy = 0;
+  
+  // Initial horizontal direction
+  const angle = Math.random() * Math.PI * 2;
+  dx = Math.cos(angle);
+  dz = Math.sin(angle);
+  
+  for (let step = 0; step < tunnelLength; step++) {
+    // Record middle point as spawn point
+    if (step === middleStep) {
+      spawnX = Math.floor(x);
+      spawnY = Math.floor(y);
+      spawnZ = Math.floor(z);
+    }
+    
+    // Vary tunnel width and height
+    const width = 1.0 + Math.random() * 0.5;
+    const height = 1.5 + Math.random() * 1.0;
+    
+    // Dig elliptical cross-section
+    for (let wx = -Math.ceil(width); wx <= Math.ceil(width); wx++) {
+      for (let wy = 0; wy <= Math.ceil(height); wy++) {
+        const nx = x + wx * Math.abs(dz) + (wy > 0 ? 0 : 0);
+        const nz = z + wx * Math.abs(dx);
+        const ny = y + wy;
+        
+        // Check if within ellipse
+        const wNorm = wx / width;
+        const hNorm = wy / height;
+        if (wNorm * wNorm + hNorm * hNorm <= 1.0) {
+          if (nx >= -halfGroundSize && nx < halfGroundSize &&
+              nz >= -halfGroundSize && nz < halfGroundSize &&
+              ny >= 0 && ny < 64) {
+            digSphere(nx, ny, nz, 1.2);
+          }
+        }
+      }
+    }
+    
+    // Move forward
+    x += dx;
+    z += dz;
+    y += dy;
+    
+    // Randomly change direction (more frequent for winding caves)
+    if (Math.random() < 0.4) {
+      const turnAngle = (Math.random() - 0.5) * Math.PI * 0.5;
+      const cos = Math.cos(turnAngle);
+      const sin = Math.sin(turnAngle);
+      const newDx = dx * cos - dz * sin;
+      const newDz = dx * sin + dz * cos;
+      dx = newDx;
+      dz = newDz;
+    }
+    
+    // Random vertical movement
+    if (Math.random() < 0.2) {
+      dy = (Math.random() - 0.5) * 0.5;
+    } else if (Math.random() < 0.1) {
+      dy = 0;
+    }
+    
+    // Keep within vertical bounds
+    if (y < 2) { y = 2; dy = Math.abs(dy); }
+    if (y > 60) { y = 60; dy = -Math.abs(dy); }
+    
+    // Random branching (10% chance)
+    if (Math.random() < 0.1 && step > 10) {
+      const branchAngle = (Math.random() - 0.5) * Math.PI;
+      const bCos = Math.cos(branchAngle);
+      const bSin = Math.sin(branchAngle);
+      const branchDx = dx * bCos - dz * bSin;
+      const branchDz = dx * bSin + dz * bCos;
+      
+      // Generate branch with shorter length
+      let bx = x;
+      let by = y;
+      let bz = z;
+      const branchLength = 10 + Math.floor(Math.random() * 20);
+      
+      for (let bStep = 0; bStep < branchLength; bStep++) {
+        bx += branchDx;
+        bz += branchDz;
+        
+        if (Math.random() < 0.3) {
+          by += (Math.random() - 0.5) * 0.3;
+        }
+        
+        by = Math.max(2, Math.min(60, by));
+        
+        const bWidth = 0.8 + Math.random() * 0.4;
+        digSphere(bx, by, bz, bWidth);
+      }
+    }
+  }
+  
+  // Return spawn position (middle of tunnel)
+  return { x: spawnX, y: spawnY, z: spawnZ };
+}
+
+// Generate caves
+for (let i = 0; i < caveCount; i++) {
+  const startX = Math.floor(Math.random() * (groundSize - 20)) - (groundSize / 2 - 10);
+  const startZ = Math.floor(Math.random() * (groundSize - 20)) - (groundSize / 2 - 10);
+  const startY = Math.floor(Math.random() * (maxCaveY - minCaveY)) + minCaveY;
+  
+  const center = generateLavaTube(startX, startY, startZ);
+  caveCenters.push(center);
 }
 
 // Generate random structures on the ground
@@ -396,7 +515,23 @@ pitch.add(camera);
 // Spawn player in a random cave if available, otherwise above ground
 if (caveCenters.length > 0) {
   const spawnCave = caveCenters[Math.floor(Math.random() * caveCenters.length)];
-  player.position.set(spawnCave.x + 0.5, spawnCave.y + 0.5, spawnCave.z + 0.5);
+  let spawnX = Math.floor(spawnCave.x);
+  let spawnY = Math.floor(spawnCave.y);
+  let spawnZ = Math.floor(spawnCave.z);
+  
+  // Find safe spawn position (move up if blocked)
+  let attempts = 0;
+  while (hasBlock(spawnX, spawnY, spawnZ) && attempts < 50) {
+    spawnY++;
+    attempts++;
+  }
+  
+  // If couldn't find safe position, try original position
+  if (attempts >= 50) {
+    spawnY = Math.floor(spawnCave.y);
+  }
+  
+  player.position.set(spawnX + 0.5, spawnY, spawnZ + 0.5);
 } else {
   player.position.y = 64; // Spawn above ground layers
 }
