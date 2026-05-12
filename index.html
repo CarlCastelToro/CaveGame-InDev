@@ -227,6 +227,35 @@ canvas { display: block; }
   pointer-events: none;
   display: none;
 }
+
+/* Death screen styles */
+#death-screen {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.85);
+  display: none; align-items: center; justify-content: center;
+  flex-direction: column; gap: 30px;
+  z-index: 300;
+  pointer-events: auto;
+}
+#death-screen.visible {
+  display: flex;
+}
+#death-title {
+  color: #cc0000; font: bold 48px sans-serif;
+  text-shadow: 2px 2px 4px #000;
+}
+#refresh-btn {
+  padding: 15px 40px;
+  font: 24px sans-serif;
+  background: #444;
+  color: #fff;
+  border: 2px solid #888;
+  cursor: pointer;
+  border-radius: 5px;
+}
+#refresh-btn:hover {
+  background: #666;
+}
 </style>
 </head>
 <body>
@@ -235,6 +264,10 @@ canvas { display: block; }
 <div id="mining-bar"><div class="mining-fill"></div></div>
 <div id="mining-label"></div>
 <div id="vignette"></div>
+<div id="death-screen">
+  <div id="death-title">YOU DIED</div>
+  <button id="refresh-btn" onclick="location.reload()">REFRESH</button>
+</div>
 <div id="stats">FPS: 0<br>X: 0 Y: 0 Z: 0</div>
 <div id="status-bars">
   <div id="health-bar" class="status-bar">
@@ -1601,6 +1634,13 @@ let health = 20;
 let maxHealth = 20;
 let spawnPosition = player.position.clone(); // Store spawn position for respawn
 
+// Death system
+let isDead = false;
+let deathTimer = 0;
+let deathPosition = new THREE.Vector3();
+const DEATH_SCREEN_DELAY = 2;
+const DEATH_CAMERA_DISTANCE = 16;
+
 // Oxygen system
 let oxygen = 100;
 let maxOxygen = 100;
@@ -1850,11 +1890,12 @@ document.addEventListener('wheel', e => {
 const blocker = document.getElementById('blocker');
 let locked = false;
 blocker.addEventListener('click', () => {
+  if (isDead) return;
   renderer.domElement.requestPointerLock();
 });
 document.addEventListener('pointerlockchange', () => {
   locked = !!document.pointerLockElement;
-  blocker.style.display = locked ? 'none' : 'flex';
+  blocker.style.display = (locked || isDead) ? 'none' : 'flex';
 });
 document.addEventListener('mousemove', e => {
   if (!locked) return;
@@ -1898,6 +1939,9 @@ function getSpaceSize(position) {
 }
 
 function update(dt) {
+  // Death pause - skip all gameplay updates
+  if (isDead) return;
+  
   // Mining progress
   if (mining && miningTarget && mouseDown) {
     // Check if still looking at the same block
@@ -2099,32 +2143,31 @@ function update(dt) {
 }
 
 function respawnPlayer() {
-  // Reset health and oxygen
-  health = maxHealth;
-  oxygen = maxOxygen;
-  oxygenDamageCounter = 0;
+  if (isDead) return;
+  isDead = true;
+  deathTimer = 0;
+  deathPosition.copy(player.position);
   
-  // Find safe spawn position
-  let spawnX = Math.floor(spawnPosition.x);
-  let spawnY = Math.floor(spawnPosition.y);
-  let spawnZ = Math.floor(spawnPosition.z);
+  // Set time to 10%
+  dayNightSystem.time = 0.1;
   
-  // If spawn position is blocked, move up until we find air
-  while (hasBlock(spawnX, spawnY, spawnZ) && spawnY < 100) {
-    spawnY++;
-  }
+  // Hide UI
+  document.getElementById('hotbar').style.display = 'none';
+  document.getElementById('status-bars').style.display = 'none';
+  document.getElementById('stats').style.display = 'none';
+  document.getElementById('crosshair').style.display = 'none';
+  document.getElementById('mining-bar').style.display = 'none';
+  document.getElementById('mining-label').style.display = 'none';
   
-  // Set player position to safe spot
-  player.position.set(spawnX + 0.5, spawnY + 0.5, spawnZ + 0.5);
-  
-  // Reset velocity
-  velocityY = 0;
-  onGround = false;
+  // Exit pointer lock
+  document.exitPointerLock();
 }
 
 const raycaster = new THREE.Raycaster();
 const frustum = new THREE.Frustum();
 const projScreenMatrix = new THREE.Matrix4();
+
+const INTERACT_RANGE = 3;
 
 function getBlockIntersects() {
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
@@ -2132,6 +2175,7 @@ function getBlockIntersects() {
   
   const result = [];
   for (const hit of hits) {
+    if (hit.distance > INTERACT_RANGE) continue;
     if (hit.object === ground) continue;
     
     if (hit.object === stoneInstancedMesh) {
@@ -2173,7 +2217,7 @@ function getMonsterIntersect() {
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
   const meshes = monsters.map(m => m.mesh);
   const hits = raycaster.intersectObjects(meshes, false);
-  if (hits.length > 0) {
+  if (hits.length > 0 && hits[0].distance <= INTERACT_RANGE) {
     const hitMesh = hits[0].object;
     return monsters.find(m => m.mesh === hitMesh) || null;
   }
@@ -2183,6 +2227,12 @@ function getMonsterIntersect() {
 function placeBlock(pos) {
   const selectedType = getSelectedBlockType();
   if (!selectedType) return;
+  
+  // Check distance
+  const dx = pos.x - player.position.x;
+  const dy = pos.y - player.position.y;
+  const dz = pos.z - player.position.z;
+  if (Math.sqrt(dx * dx + dy * dy + dz * dz) > INTERACT_RANGE) return;
   
   // Check if item is placeable
   const cfg = BLOCK_TYPES[selectedType];
@@ -2441,6 +2491,7 @@ function stopMining() {
 document.addEventListener('mousedown', e => {
   if (!locked) return;
   if (craftingOpen) return;
+  if (isDead) return;
   mouseDown = true;
   mouseButton = e.button;
   
@@ -2498,6 +2549,29 @@ function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
   update(delta);
   updateDayNightCycle(delta);
+  
+  // Death camera and timer
+  if (isDead) {
+    deathTimer += delta;
+    
+    // Position camera away from death location
+    const camAngle = deathTimer * 0.3; // Slow rotation
+    const camX = deathPosition.x + Math.cos(camAngle) * DEATH_CAMERA_DISTANCE;
+    const camZ = deathPosition.z + Math.sin(camAngle) * DEATH_CAMERA_DISTANCE;
+    const camY = deathPosition.y + DEATH_CAMERA_DISTANCE * 0.6;
+    
+    // Override camera transform
+    player.position.set(deathPosition.x, deathPosition.y, deathPosition.z);
+    camera.position.set(camX, camY, camZ);
+    camera.lookAt(deathPosition.x, deathPosition.y + 1, deathPosition.z);
+    player.rotation.set(0, 0, 0);
+    pitch.rotation.set(0, 0, 0);
+    
+    // Show death screen after delay
+    if (deathTimer >= DEATH_SCREEN_DELAY) {
+      document.getElementById('death-screen').classList.add('visible');
+    }
+  }
   
   // Batch update instance matrix
   if (instanceMatrixDirty) {
