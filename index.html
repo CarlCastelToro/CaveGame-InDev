@@ -1096,6 +1096,7 @@ function getTimePhase(time) {
 }
 
 // Update day-night cycle
+const caveFogColor = new THREE.Color(0x0a0a0a);
 function updateDayNightCycle(delta) {
   // Update time (0 to 1 over DAY_CYCLE_DURATION seconds)
   dayNightSystem.time = (dayNightSystem.time + delta / DAY_CYCLE_DURATION) % 1.0;
@@ -1105,37 +1106,44 @@ function updateDayNightCycle(delta) {
   // Smooth interpolation factor (ease in-out)
   const smoothFactor = factor * factor * (3 - 2 * factor);
   
-  // Update sky color
+  // Compute outdoor lighting targets from day-night cycle
   const skyColor = lerpColor(dayNightSystem.skyColors[from], dayNightSystem.skyColors[to], smoothFactor);
-  scene.background = skyColor;
-  
-  // Update fog color (same as sky)
-  scene.fog.color = skyColor;
-  
-  // Update ambient light
   const ambientColor = lerpColor(dayNightSystem.ambientColors[from], dayNightSystem.ambientColors[to], smoothFactor);
-  ambient.color = ambientColor;
-  ambient.intensity = lerpValue(dayNightSystem.ambientIntensity[from], dayNightSystem.ambientIntensity[to], smoothFactor);
+  const targetAmbientIntensity = lerpValue(dayNightSystem.ambientIntensity[from], dayNightSystem.ambientIntensity[to], smoothFactor);
+  const targetDirIntensity = lerpValue(dayNightSystem.directionalIntensity[from], dayNightSystem.directionalIntensity[to], smoothFactor);
   
-  // Update directional light (sun)
-  const dirIntensity = lerpValue(dayNightSystem.directionalIntensity[from], dayNightSystem.directionalIntensity[to], smoothFactor);
-  dirLight.intensity = dirIntensity;
+  // Compute outdoor factor from space size (0 = deep cave, 1 = fully open)
+  const outdoorFactor = Math.min(1, Math.max(0, (currentSpaceSize - 3) / 12));
+  
+  // Sky color and fog with cave transition
+  scene.background = skyColor;
+  scene.fog.color.copy(caveFogColor).lerp(skyColor, outdoorFactor);
+  
+  // Cave ambient light: grey, strong in caves, off outdoors
+  caveAmbientLight.intensity = CAVE_AMBIENT_INTENSITY * (1 - outdoorFactor);
+  caveAmbientLight.position.copy(player.position);
+  caveAmbientLight.position.y += PLAYER_HEIGHT;
+  
+  // Global ambient: near-zero base in caves, full outdoor contribution
+  ambient.intensity = 0.02 + targetAmbientIntensity * outdoorFactor;
+  ambient.color.copy(ambientColor);
+  
+  // Directional light: off in caves, full outdoors
+  dirLight.intensity = targetDirIntensity * outdoorFactor;
   
   // Rotate sun position based on time
-  const sunAngle = dayNightSystem.time * Math.PI * 2 - Math.PI / 2; // Start from east
+  const sunAngle = dayNightSystem.time * Math.PI * 2 - Math.PI / 2;
   const sunRadius = 80;
   dirLight.position.set(
     Math.cos(sunAngle) * sunRadius,
-    Math.sin(sunAngle) * sunRadius + 20, // Keep sun above horizon longer
+    Math.sin(sunAngle) * sunRadius + 20,
     30
   );
   
   // Update directional light color based on time
   if (dayNightSystem.time < 0.3 || dayNightSystem.time > 0.7) {
-    // Dawn/dusk - warm colors
-    dirLight.color.setHex(0xffa500); // Orange
+    dirLight.color.setHex(0xffa500);
   } else {
-    // Day - white
     dirLight.color.setHex(0xffffff);
   }
 }
@@ -1591,6 +1599,15 @@ torchLight.castShadow = false;
 scene.add(torchLight);
 let torchLightActive = false;
 
+// Cave ambient light (grey, always follows player)
+const CAVE_AMBIENT_INTENSITY = 0.6;
+const caveAmbientLight = new THREE.PointLight(0x909090, CAVE_AMBIENT_INTENSITY, 0, 1);
+caveAmbientLight.castShadow = false;
+scene.add(caveAmbientLight);
+
+// Shared space size for cave/outdoor blending
+let currentSpaceSize = 10;
+
 let velocityY = 0;
 let onGround = false;
 const keys = {};
@@ -1783,8 +1800,8 @@ function update(dt) {
   }
   
   // Update oxygen
-  const spaceSize = getSpaceSize(player.position);
-  let oxygenRate = (spaceSize - idealSpaceSize) * 0.1; // Linear relationship
+  currentSpaceSize = getSpaceSize(player.position);
+  let oxygenRate = (currentSpaceSize - idealSpaceSize) * 0.1; // Linear relationship
   
   // Apply health bonus to consumption rate
   if (oxygenRate < 0) {
