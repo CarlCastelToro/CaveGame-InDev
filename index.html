@@ -272,7 +272,8 @@ canvas { display: block; }
     snow: { name: 'Snow', color: '#FFFAFA' },
     obsidian: { name: 'Obsidian', color: '#1A1A2E' },
     stick: { name: 'Stick', color: '#A0522D', icon: 'stick', placeable: false },
-    stone_pickaxe: { name: 'Stone Pickaxe', color: '#808080', icon: 'pickaxe', placeable: false, maxDurability: 64 }
+    stone_pickaxe: { name: 'Stone Pickaxe', color: '#808080', icon: 'pickaxe', placeable: false, maxDurability: 64 },
+    torch: { name: 'Torch', color: '#FF8C00', icon: 'torch', placeable: false, maxDurability: 120, stackDurability: true }
   };
   
   // Crafting recipes
@@ -284,13 +285,18 @@ canvas { display: block; }
     {
       pattern: [['stone', 'stone', 'stone'], [null, 'stick', null], [null, 'stick', null]],
       result: { type: 'stone_pickaxe', count: 1 }
+    },
+    {
+      pattern: [['wood', null, null], ['stick', null, null], [null, null, null]],
+      result: { type: 'torch', count: 1 }
     }
   ];
   
   var hotbarData = [
     { type: 'stone_pickaxe', count: 1, durability: 64 },
+    { type: 'torch', count: 1, durability: 120 },
     { type: 'wood', count: Math.floor(Math.random() * 11) + 1 },
-    null, null, null, null, null, null, null
+    null, null, null, null, null, null
   ];
   var selectedSlot = 0;
   var craftingGrid = [null, null, null, null, null, null, null, null, null];
@@ -325,6 +331,21 @@ canvas { display: block; }
       ctx.fillRect(15, 6, 2, 2);
       ctx.fillRect(15, 14, 2, 2);
       ctx.fillRect(15, 22, 2, 2);
+    } else if (type === 'torch') {
+      // Torch handle
+      ctx.fillStyle = '#6B3A1F';
+      ctx.fillRect(0, 0, 32, 32);
+      ctx.fillStyle = '#8B5E3C';
+      ctx.fillRect(14, 10, 4, 20);
+      ctx.fillStyle = '#A0724B';
+      ctx.fillRect(15, 11, 2, 18);
+      // Torch head (glowing)
+      ctx.fillStyle = '#FF8C00';
+      ctx.fillRect(13, 4, 6, 8);
+      ctx.fillStyle = '#FFD700';
+      ctx.fillRect(14, 5, 4, 6);
+      ctx.fillStyle = '#FFA500';
+      ctx.fillRect(15, 6, 2, 4);
     } else if (type === 'stone_pickaxe') {
       ctx.fillStyle = '#6B3A1F';
       ctx.fillRect(0, 0, 32, 32);
@@ -581,6 +602,36 @@ canvas { display: block; }
   };
   
   window._addToHotbar = function(type, count, durability) {
+    var cfg = BLOCK_TYPES[type];
+    
+    // Special handling for items with stackDurability (like torch)
+    if (cfg && cfg.stackDurability && durability !== undefined) {
+      // First try to stack durability with existing items
+      for (var i = 0; i < 9; i++) {
+        if (hotbarData[i] && hotbarData[i].type === type) {
+          var maxDur = cfg.maxDurability;
+          var currentDur = hotbarData[i].durability || 0;
+          var canAdd = maxDur - currentDur;
+          var toAdd = Math.min(durability, canAdd);
+          if (toAdd > 0) {
+            hotbarData[i].durability = currentDur + toAdd;
+            window._renderHotbar();
+            return true;
+          }
+        }
+      }
+      // If no existing stack, create new
+      for (var i = 0; i < 9; i++) {
+        if (!hotbarData[i]) {
+          hotbarData[i] = { type: type, count: 1, durability: Math.min(durability, cfg.maxDurability) };
+          window._renderHotbar();
+          return true;
+        }
+      }
+      return false;
+    }
+    
+    // Normal stacking for other items
     for (var i = 0; i < 9; i++) {
       if (hotbarData[i] && hotbarData[i].type === type && durability === undefined) {
         hotbarData[i].count += count;
@@ -713,6 +764,16 @@ const BLOCK_TYPES = {
     maxStack: 1,
     placeable: false,
     maxDurability: 64
+  },
+  torch: {
+    id: 'torch',
+    name: 'Torch',
+    color: '#FF8C00',
+    maxStack: 1,
+    placeable: false,
+    maxDurability: 120,
+    stackDurability: true,
+    icon: 'torch'
   }
 };
 
@@ -800,11 +861,41 @@ function hexToRgb(hex) {
 }
 
 // Add item to hotbar
-function addItemToHotbar(blockType, count = 1) {
+function addItemToHotbar(blockType, count = 1, durability = undefined) {
+  const cfg = BLOCK_TYPES[blockType];
+  
+  // Special handling for items with stackDurability (like torch)
+  if (cfg && cfg.stackDurability && durability !== undefined) {
+    // First try to stack durability with existing items
+    for (let i = 0; i < HOTBAR_SIZE; i++) {
+      if (hotbar[i] && hotbar[i].type === blockType) {
+        const maxDur = cfg.maxDurability;
+        const currentDur = hotbar[i].durability || 0;
+        const canAdd = maxDur - currentDur;
+        const toAdd = Math.min(durability, canAdd);
+        if (toAdd > 0) {
+          hotbar[i].durability = currentDur + toAdd;
+          renderHotbar();
+          return true;
+        }
+      }
+    }
+    // If no existing stack, create new
+    for (let i = 0; i < HOTBAR_SIZE; i++) {
+      if (!hotbar[i]) {
+        hotbar[i] = { type: blockType, count: 1, durability: Math.min(durability, cfg.maxDurability) };
+        renderHotbar();
+        return true;
+      }
+    }
+    return false;
+  }
+  
+  // Normal stacking for other items
   // First try to stack with existing items
   for (let i = 0; i < HOTBAR_SIZE; i++) {
     if (hotbar[i] && hotbar[i].type === blockType) {
-      const maxStack = BLOCK_TYPES[blockType].maxStack;
+      const maxStack = cfg.maxStack;
       const canAdd = maxStack - hotbar[i].count;
       const toAdd = Math.min(count, canAdd);
       if (toAdd > 0) {
@@ -821,7 +912,7 @@ function addItemToHotbar(blockType, count = 1) {
   // Then try to find empty slot
   for (let i = 0; i < HOTBAR_SIZE; i++) {
     if (!hotbar[i]) {
-      const maxStack = BLOCK_TYPES[blockType].maxStack;
+      const maxStack = cfg.maxStack;
       const toAdd = Math.min(count, maxStack);
       hotbar[i] = { type: blockType, count: toAdd };
       count -= toAdd;
@@ -918,6 +1009,136 @@ dirLight.shadow.camera.top = 80;
 dirLight.shadow.camera.bottom = -80;
 dirLight.shadow.mapSize.set(2048, 2048);
 scene.add(dirLight);
+
+// Day-Night Cycle System
+const DAY_CYCLE_DURATION = 240; // 4 minutes in seconds
+const dayNightSystem = {
+  time: 0, // 0 to 1 (0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset)
+  
+  // Color presets for different times
+  skyColors: {
+    midnight: new THREE.Color(0x0a0a2e),    // Dark blue
+    dawn: new THREE.Color(0xff6b6b),        // Soft red
+    sunrise: new THREE.Color(0xffa07a),     // Light salmon
+    day: new THREE.Color(0x87ceeb),         // Sky blue
+    sunset: new THREE.Color(0xff4500),      // Orange red
+    dusk: new THREE.Color(0x4a0080),        // Purple
+  },
+  
+  // Ambient light settings
+  ambientColors: {
+    midnight: new THREE.Color(0x1a1a4e),    // Dark blue
+    dawn: new THREE.Color(0xff8c69),        // Orange
+    sunrise: new THREE.Color(0xffa07a),     // Light salmon
+    day: new THREE.Color(0xffffff),         // White
+    sunset: new THREE.Color(0xff6347),      // Tomato
+    dusk: new THREE.Color(0x483d8b),        // Dark slate blue
+  },
+  
+  // Intensity multipliers
+  ambientIntensity: {
+    midnight: 0.08,
+    dawn: 0.3,
+    sunrise: 0.45,
+    day: 0.6,
+    sunset: 0.4,
+    dusk: 0.15,
+  },
+  
+  directionalIntensity: {
+    midnight: 0.0,
+    dawn: 0.3,
+    sunrise: 0.5,
+    day: 0.8,
+    sunset: 0.5,
+    dusk: 0.1,
+  },
+};
+
+// Helper function to interpolate between colors
+function lerpColor(color1, color2, factor) {
+  return color1.clone().lerp(color2, factor);
+}
+
+// Helper function to interpolate between values
+function lerpValue(a, b, factor) {
+  return a + (b - a) * factor;
+}
+
+// Get current time phase and interpolation factor
+function getTimePhase(time) {
+  // time: 0 to 1
+  // Phases: midnight(0) -> dawn(0.2) -> sunrise(0.3) -> day(0.5) -> sunset(0.7) -> dusk(0.8) -> midnight(1.0)
+  
+  const phases = [
+    { time: 0.0, name: 'midnight' },
+    { time: 0.2, name: 'dawn' },
+    { time: 0.3, name: 'sunrise' },
+    { time: 0.5, name: 'day' },
+    { time: 0.7, name: 'sunset' },
+    { time: 0.8, name: 'dusk' },
+    { time: 1.0, name: 'midnight' },
+  ];
+  
+  for (let i = 0; i < phases.length - 1; i++) {
+    if (time >= phases[i].time && time < phases[i + 1].time) {
+      const phaseDuration = phases[i + 1].time - phases[i].time;
+      const factor = (time - phases[i].time) / phaseDuration;
+      return {
+        from: phases[i].name,
+        to: phases[i + 1].name,
+        factor: factor,
+      };
+    }
+  }
+  
+  return { from: 'midnight', to: 'midnight', factor: 0 };
+}
+
+// Update day-night cycle
+function updateDayNightCycle(delta) {
+  // Update time (0 to 1 over DAY_CYCLE_DURATION seconds)
+  dayNightSystem.time = (dayNightSystem.time + delta / DAY_CYCLE_DURATION) % 1.0;
+  
+  const { from, to, factor } = getTimePhase(dayNightSystem.time);
+  
+  // Smooth interpolation factor (ease in-out)
+  const smoothFactor = factor * factor * (3 - 2 * factor);
+  
+  // Update sky color
+  const skyColor = lerpColor(dayNightSystem.skyColors[from], dayNightSystem.skyColors[to], smoothFactor);
+  scene.background = skyColor;
+  
+  // Update fog color (same as sky)
+  scene.fog.color = skyColor;
+  
+  // Update ambient light
+  const ambientColor = lerpColor(dayNightSystem.ambientColors[from], dayNightSystem.ambientColors[to], smoothFactor);
+  ambient.color = ambientColor;
+  ambient.intensity = lerpValue(dayNightSystem.ambientIntensity[from], dayNightSystem.ambientIntensity[to], smoothFactor);
+  
+  // Update directional light (sun)
+  const dirIntensity = lerpValue(dayNightSystem.directionalIntensity[from], dayNightSystem.directionalIntensity[to], smoothFactor);
+  dirLight.intensity = dirIntensity;
+  
+  // Rotate sun position based on time
+  const sunAngle = dayNightSystem.time * Math.PI * 2 - Math.PI / 2; // Start from east
+  const sunRadius = 80;
+  dirLight.position.set(
+    Math.cos(sunAngle) * sunRadius,
+    Math.sin(sunAngle) * sunRadius + 20, // Keep sun above horizon longer
+    30
+  );
+  
+  // Update directional light color based on time
+  if (dayNightSystem.time < 0.3 || dayNightSystem.time > 0.7) {
+    // Dawn/dusk - warm colors
+    dirLight.color.setHex(0xffa500); // Orange
+  } else {
+    // Day - white
+    dirLight.color.setHex(0xffffff);
+  }
+}
 
 // Bedrock texture for ground
 const bedrockCanvas = document.createElement('canvas');
@@ -1362,6 +1583,14 @@ const idealSpaceSize = 10; // Linear midpoint for space size
 const oxygenDamageTimer = 5; // Seconds between damage when oxygen is 0 (doubled speed)
 let oxygenDamageCounter = 0;
 
+// Torch light system
+const TORCH_MAX_LIGHT_RADIUS = 5;
+const TORCH_BASE_INTENSITY = 2.0;
+let torchLight = new THREE.PointLight(0xff8c00, TORCH_BASE_INTENSITY, TORCH_MAX_LIGHT_RADIUS, 0);
+torchLight.castShadow = false;
+scene.add(torchLight);
+let torchLightActive = false;
+
 let velocityY = 0;
 let onGround = false;
 const keys = {};
@@ -1563,8 +1792,43 @@ function update(dt) {
     oxygenRate *= (1 + 0.03 * healthLost); // 3% increase per health lost
   }
   
+  // Check if holding torch for extra oxygen consumption
+  const selectedItem = hotbar[selectedSlot];
+  const isHoldingTorch = selectedItem && selectedItem.type === 'torch' && selectedItem.durability > 0;
+  if (isHoldingTorch && oxygenRate < 0) {
+    oxygenRate *= 1.1; // 10% extra oxygen consumption when holding torch
+  }
+  
   oxygen += oxygenRate * dt;
   oxygen = Math.max(0, Math.min(maxOxygen, oxygen));
+  
+  // Update torch light
+  if (isHoldingTorch) {
+    // Calculate light intensity based on durability
+    const durabilityPercent = selectedItem.durability / BLOCK_TYPES.torch.maxDurability;
+    const lightIntensity = TORCH_BASE_INTENSITY * durabilityPercent;
+    const lightRadius = TORCH_MAX_LIGHT_RADIUS * durabilityPercent;
+    
+    torchLight.intensity = lightIntensity;
+    torchLight.distance = lightRadius;
+    torchLight.position.copy(player.position);
+    torchLight.position.y += PLAYER_HEIGHT - 0.3; // Slightly above player head
+    torchLight.visible = true;
+    torchLightActive = true;
+    
+    // Consume durability
+    selectedItem.durability -= dt;
+    if (selectedItem.durability <= 0) {
+      selectedItem.durability = 0;
+      hotbar[selectedSlot] = null;
+      renderHotbar();
+      torchLight.visible = false;
+      torchLightActive = false;
+    }
+  } else {
+    torchLight.visible = false;
+    torchLightActive = false;
+  }
   
   // Oxygen damage
   if (oxygen <= 0) {
@@ -2005,6 +2269,7 @@ function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
   update(delta);
+  updateDayNightCycle(delta);
   
   // Batch update instance matrix
   if (instanceMatrixDirty) {
@@ -2050,7 +2315,14 @@ function animate() {
   const selectedItem = hotbar[selectedSlot];
   const selectedName = selectedItem ? BLOCK_TYPES[selectedItem.type].name : 'Empty';
   const selectedCount = selectedItem ? selectedItem.count : 0;
-  statsElement.innerHTML = `${fpsDisplay}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Selected: ${selectedName} (${selectedCount})`;
+  
+  // Get time of day string
+  const { from, to, factor } = getTimePhase(dayNightSystem.time);
+  let timeOfDay = from;
+  if (factor > 0.5) timeOfDay = to;
+  const timePercent = Math.round(dayNightSystem.time * 100);
+  
+  statsElement.innerHTML = `${fpsDisplay}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Selected: ${selectedName} (${selectedCount})<br>Time: ${timeOfDay} (${timePercent}%)`;
   
   // Update status bars
   if (window._updateStatusBars) {
