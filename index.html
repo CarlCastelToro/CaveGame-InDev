@@ -1013,126 +1013,122 @@ scene.add(dirLight);
 // Day-Night Cycle System
 const DAY_CYCLE_DURATION = 240; // 4 minutes in seconds
 const dayNightSystem = {
-  time: 0, // 0 to 1 (0 = midnight, 0.25 = sunrise, 0.5 = noon, 0.75 = sunset)
-  
-  // Color presets for different times
-  skyColors: {
-    midnight: new THREE.Color(0x0a0a2e),    // Dark blue
-    dawn: new THREE.Color(0xff6b6b),        // Soft red
-    sunrise: new THREE.Color(0xffa07a),     // Light salmon
-    day: new THREE.Color(0x87ceeb),         // Sky blue
-    sunset: new THREE.Color(0xff4500),      // Orange red
-    dusk: new THREE.Color(0x4a0080),        // Purple
-  },
-  
-  // Ambient light settings
-  ambientColors: {
-    midnight: new THREE.Color(0x1a1a4e),    // Dark blue
-    dawn: new THREE.Color(0xff8c69),        // Orange
-    sunrise: new THREE.Color(0xffa07a),     // Light salmon
-    day: new THREE.Color(0xffffff),         // White
-    sunset: new THREE.Color(0xff6347),      // Tomato
-    dusk: new THREE.Color(0x483d8b),        // Dark slate blue
-  },
-  
-  // Intensity multipliers
-  ambientIntensity: {
-    midnight: 0.08,
-    dawn: 0.3,
-    sunrise: 0.45,
-    day: 0.6,
-    sunset: 0.4,
-    dusk: 0.15,
-  },
-  
-  directionalIntensity: {
-    midnight: 0.0,
-    dawn: 0.3,
-    sunrise: 0.5,
-    day: 0.8,
-    sunset: 0.5,
-    dusk: 0.1,
-  },
+  time: 0,
 };
 
-// Helper function to interpolate between colors
-function lerpColor(color1, color2, factor) {
-  return color1.clone().lerp(color2, factor);
-}
+// Gradient stop arrays: [{t, v}] where t = 0..1, v = color or number
+// Sorted by t ascending. Wraps around at t=1.
+const skyGradient = [
+  { t: 0.00, v: new THREE.Color(0x080820) },
+  { t: 0.15, v: new THREE.Color(0x1a1040) },
+  { t: 0.20, v: new THREE.Color(0x4a2060) },
+  { t: 0.25, v: new THREE.Color(0xcc5544) },
+  { t: 0.30, v: new THREE.Color(0xffa07a) },
+  { t: 0.38, v: new THREE.Color(0x87ceeb) },
+  { t: 0.50, v: new THREE.Color(0x6bb5d6) },
+  { t: 0.65, v: new THREE.Color(0xf0a050) },
+  { t: 0.72, v: new THREE.Color(0xcc3322) },
+  { t: 0.80, v: new THREE.Color(0x3a1060) },
+  { t: 0.90, v: new THREE.Color(0x100830) },
+];
 
-// Helper function to interpolate between values
-function lerpValue(a, b, factor) {
-  return a + (b - a) * factor;
-}
+const ambientColorGradient = [
+  { t: 0.00, v: new THREE.Color(0x101030) },
+  { t: 0.15, v: new THREE.Color(0x1a1545) },
+  { t: 0.22, v: new THREE.Color(0x804050) },
+  { t: 0.28, v: new THREE.Color(0xee9070) },
+  { t: 0.35, v: new THREE.Color(0xffffff) },
+  { t: 0.50, v: new THREE.Color(0xffffff) },
+  { t: 0.62, v: new THREE.Color(0xffeedd) },
+  { t: 0.70, v: new THREE.Color(0xee7744) },
+  { t: 0.78, v: new THREE.Color(0x553060) },
+  { t: 0.88, v: new THREE.Color(0x181040) },
+];
 
-// Get current time phase and interpolation factor
-function getTimePhase(time) {
-  // time: 0 to 1
-  // Phases: midnight(0) -> dawn(0.2) -> sunrise(0.3) -> day(0.5) -> sunset(0.7) -> dusk(0.8) -> midnight(1.0)
-  
-  const phases = [
-    { time: 0.0, name: 'midnight' },
-    { time: 0.2, name: 'dawn' },
-    { time: 0.3, name: 'sunrise' },
-    { time: 0.5, name: 'day' },
-    { time: 0.7, name: 'sunset' },
-    { time: 0.8, name: 'dusk' },
-    { time: 1.0, name: 'midnight' },
-  ];
-  
-  for (let i = 0; i < phases.length - 1; i++) {
-    if (time >= phases[i].time && time < phases[i + 1].time) {
-      const phaseDuration = phases[i + 1].time - phases[i].time;
-      const factor = (time - phases[i].time) / phaseDuration;
-      return {
-        from: phases[i].name,
-        to: phases[i + 1].name,
-        factor: factor,
-      };
+const ambientIntensityGradient = [
+  { t: 0.00, v: 0.08 },
+  { t: 0.20, v: 0.10 },
+  { t: 0.26, v: 0.30 },
+  { t: 0.35, v: 0.55 },
+  { t: 0.50, v: 0.60 },
+  { t: 0.65, v: 0.55 },
+  { t: 0.72, v: 0.35 },
+  { t: 0.80, v: 0.12 },
+  { t: 0.90, v: 0.08 },
+];
+
+const dirIntensityGradient = [
+  { t: 0.00, v: 0.00 },
+  { t: 0.20, v: 0.00 },
+  { t: 0.26, v: 0.25 },
+  { t: 0.35, v: 0.65 },
+  { t: 0.50, v: 0.80 },
+  { t: 0.65, v: 0.65 },
+  { t: 0.72, v: 0.30 },
+  { t: 0.80, v: 0.02 },
+  { t: 0.90, v: 0.00 },
+];
+
+// Find two bracketing stops and interpolate
+function gradientLookup(stops, time) {
+  const n = stops.length;
+  if (time <= stops[0].t) return stops[0].v;
+  if (time >= stops[n - 1].t) return stops[n - 1].v;
+  for (let i = 0; i < n - 1; i++) {
+    if (time >= stops[i].t && time <= stops[i + 1].t) {
+      const localT = (time - stops[i].t) / (stops[i + 1].t - stops[i].t);
+      const smooth = localT * localT * (3 - 2 * localT);
+      if (stops[i].v instanceof THREE.Color) {
+        return lerpColorHSL(stops[i].v, stops[i + 1].v, smooth);
+      }
+      return stops[i].v + (stops[i + 1].v - stops[i].v) * smooth;
     }
   }
-  
-  return { from: 'midnight', to: 'midnight', factor: 0 };
+  return stops[n - 1].v;
 }
 
-// Update day-night cycle
+// HSL color interpolation (shortest hue path)
+function lerpColorHSL(c1, c2, t) {
+  const hsl1 = { h: 0, s: 0, l: 0 };
+  const hsl2 = { h: 0, s: 0, l: 0 };
+  c1.getHSL(hsl1);
+  c2.getHSL(hsl2);
+  let dh = hsl2.h - hsl1.h;
+  if (dh > 0.5) dh -= 1;
+  if (dh < -0.5) dh += 1;
+  let h = hsl1.h + dh * t;
+  if (h < 0) h += 1;
+  if (h > 1) h -= 1;
+  const s = hsl1.s + (hsl2.s - hsl1.s) * t;
+  const l = hsl1.l + (hsl2.l - hsl1.l) * t;
+  return new THREE.Color().setHSL(h, s, l);
+}
+
 const caveFogColor = new THREE.Color(0x0a0a0a);
 function updateDayNightCycle(delta) {
-  // Update time (0 to 1 over DAY_CYCLE_DURATION seconds)
   dayNightSystem.time = (dayNightSystem.time + delta / DAY_CYCLE_DURATION) % 1.0;
+  const t = dayNightSystem.time;
   
-  const { from, to, factor } = getTimePhase(dayNightSystem.time);
+  const skyColor = gradientLookup(skyGradient, t);
+  const ambientColor = gradientLookup(ambientColorGradient, t);
+  const targetAmbientIntensity = gradientLookup(ambientIntensityGradient, t);
+  const targetDirIntensity = gradientLookup(dirIntensityGradient, t);
   
-  // Smooth interpolation factor (ease in-out)
-  const smoothFactor = factor * factor * (3 - 2 * factor);
-  
-  // Compute outdoor lighting targets from day-night cycle
-  const skyColor = lerpColor(dayNightSystem.skyColors[from], dayNightSystem.skyColors[to], smoothFactor);
-  const ambientColor = lerpColor(dayNightSystem.ambientColors[from], dayNightSystem.ambientColors[to], smoothFactor);
-  const targetAmbientIntensity = lerpValue(dayNightSystem.ambientIntensity[from], dayNightSystem.ambientIntensity[to], smoothFactor);
-  const targetDirIntensity = lerpValue(dayNightSystem.directionalIntensity[from], dayNightSystem.directionalIntensity[to], smoothFactor);
-  
-  // Compute outdoor factor from space size (0 = deep cave, 1 = fully open)
   const outdoorFactor = Math.min(1, Math.max(0, (currentSpaceSize - 3) / 12));
   
-  // Sky color and fog with cave transition
   scene.background = skyColor;
   scene.fog.color.copy(caveFogColor).lerp(skyColor, outdoorFactor);
   
-  // Cave ambient light: grey, strong in caves, off outdoors
   caveAmbientLight.intensity = CAVE_AMBIENT_INTENSITY * (1 - outdoorFactor);
   caveAmbientLight.position.copy(player.position);
   caveAmbientLight.position.y += PLAYER_HEIGHT;
   
-  // Global ambient: near-zero base in caves, full outdoor contribution
   ambient.intensity = 0.02 + targetAmbientIntensity * outdoorFactor;
   ambient.color.copy(ambientColor);
   
-  // Directional light: off in caves, full outdoors
   dirLight.intensity = targetDirIntensity * outdoorFactor;
   
-  // Rotate sun position based on time
-  const sunAngle = dayNightSystem.time * Math.PI * 2 - Math.PI / 2;
+  const sunAngle = t * Math.PI * 2 - Math.PI / 2;
   const sunRadius = 80;
   dirLight.position.set(
     Math.cos(sunAngle) * sunRadius,
@@ -1140,9 +1136,11 @@ function updateDayNightCycle(delta) {
     30
   );
   
-  // Update directional light color based on time
-  if (dayNightSystem.time < 0.3 || dayNightSystem.time > 0.7) {
-    dirLight.color.setHex(0xffa500);
+  // Warm sun near horizon, white at zenith
+  const sunAlt = Math.sin(sunAngle);
+  if (sunAlt < 0.2 && sunAlt > -0.1) {
+    const warmth = 1 - (sunAlt + 0.1) / 0.3;
+    dirLight.color.copy(new THREE.Color(0xffffff)).lerp(new THREE.Color(0xffa040), warmth);
   } else {
     dirLight.color.setHex(0xffffff);
   }
@@ -1809,6 +1807,23 @@ function update(dt) {
     oxygenRate *= (1 + 0.03 * healthLost); // 3% increase per health lost
   }
   
+  // Detect ceiling sticking (holding space with block directly above head)
+  if (keys['Space'] && oxygenRate < 0) {
+    const px = player.position.x;
+    const py = player.position.y;
+    const pz = player.position.z;
+    const hw = PLAYER_WIDTH / 2 - 0.05;
+    const hd = PLAYER_DEPTH / 2 - 0.05;
+    const headY = Math.ceil(py + PLAYER_HEIGHT_COLLISION);
+    const ceilingHit = hasBlock(Math.floor(px - hw), headY, Math.floor(pz - hd)) ||
+                       hasBlock(Math.floor(px + hw), headY, Math.floor(pz - hd)) ||
+                       hasBlock(Math.floor(px - hw), headY, Math.floor(pz + hd)) ||
+                       hasBlock(Math.floor(px + hw), headY, Math.floor(pz + hd));
+    if (ceilingHit) {
+      oxygenRate *= 3; // 200% extra consumption
+    }
+  }
+  
   // Check if holding torch for extra oxygen consumption
   const selectedItem = hotbar[selectedSlot];
   const isHoldingTorch = selectedItem && selectedItem.type === 'torch' && selectedItem.durability > 0;
@@ -2332,14 +2347,9 @@ function animate() {
   const selectedItem = hotbar[selectedSlot];
   const selectedName = selectedItem ? BLOCK_TYPES[selectedItem.type].name : 'Empty';
   const selectedCount = selectedItem ? selectedItem.count : 0;
-  
-  // Get time of day string
-  const { from, to, factor } = getTimePhase(dayNightSystem.time);
-  let timeOfDay = from;
-  if (factor > 0.5) timeOfDay = to;
   const timePercent = Math.round(dayNightSystem.time * 100);
   
-  statsElement.innerHTML = `${fpsDisplay}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Selected: ${selectedName} (${selectedCount})<br>Time: ${timeOfDay} (${timePercent}%)`;
+  statsElement.innerHTML = `${fpsDisplay}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Selected: ${selectedName} (${selectedCount})<br>Time: ${timePercent}%`;
   
   // Update status bars
   if (window._updateStatusBars) {
