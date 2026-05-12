@@ -256,6 +256,59 @@ canvas { display: block; }
 #refresh-btn:hover {
   background: #666;
 }
+
+/* Book guide overlay */
+#book-guide-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.7); z-index: 200;
+  display: none; align-items: center; justify-content: center;
+  pointer-events: auto;
+}
+#book-guide-overlay.open {
+  display: flex;
+}
+#book-guide-panel {
+  background: #3a3a3a;
+  border: 3px solid #555;
+  border-radius: 8px;
+  padding: 20px 24px;
+  max-width: 420px;
+  position: relative;
+  color: #ddd;
+  font: 14px 'Segoe UI', sans-serif;
+  line-height: 1.7;
+}
+#book-guide-close {
+  position: absolute; top: 8px; right: 14px;
+  font: 24px sans-serif; color: #aaa; cursor: pointer;
+  transition: color 0.15s;
+}
+#book-guide-close:hover {
+  color: #fff;
+}
+#book-guide-title {
+  font: bold 18px sans-serif;
+  color: #fff;
+  margin-bottom: 12px;
+  text-align: center;
+}
+#book-guide-content p {
+  margin-bottom: 10px;
+}
+#book-guide-content p:last-child {
+  margin-bottom: 0;
+}
+#strength-notify {
+  position: fixed; top: 20%; left: 50%; transform: translateX(-50%);
+  color: #ff2222; font: bold 28px sans-serif;
+  text-shadow: 2px 2px 4px #000;
+  pointer-events: none; z-index: 300;
+  opacity: 0; transition: opacity 0.3s;
+  white-space: nowrap;
+}
+#strength-notify.visible {
+  opacity: 1;
+}
 </style>
 </head>
 <body>
@@ -292,6 +345,21 @@ canvas { display: block; }
     <div id="crafting-help">Press I to close | Click grid to return item | Click result to craft (5 O2)</div>
   </div>
 </div>
+<div id="book-guide-overlay">
+  <div id="book-guide-panel">
+    <div id="book-guide-close">&times;</div>
+    <div id="book-guide-title">Crafting Guide</div>
+    <div id="book-guide-content">
+      <p>Press <b>I</b> to open the crafting grid.</p>
+      <p><b>Sticks:</b> Place planks in row 1 col 1 and row 2 col 1 to craft 4 sticks.</p>
+      <p><b>Torch:</b> Place a plank in row 1 col 1 and a stick in row 2 col 1 to craft a torch.</p>
+      <p><b>Stone Pickaxe:</b> Place stones in row 1 col 1, row 1 col 2, and row 1 col 3. Place sticks in row 2 col 2 and row 3 col 2.</p>
+      <p><b>Tip:</b> Click an item to put it into the crafting grid in order. If you only have 1 plank and 1 stick, you can place the plank first, then put your torch and pickaxe into the grid, place the stick, then take the torch and pickaxe back out. Now you have room to craft a torch!</p>
+      <p>Click the <b>X</b> in the top-right corner to close this guide.</p>
+    </div>
+  </div>
+</div>
+<div id="strength-notify"></div>
 <script>
 (function() {
   var BLOCK_TYPES = {
@@ -306,7 +374,8 @@ canvas { display: block; }
     obsidian: { name: 'Obsidian', color: '#1A1A2E' },
     stick: { name: 'Stick', color: '#A0522D', icon: 'stick', placeable: false },
     stone_pickaxe: { name: 'Stone Pickaxe', color: '#808080', icon: 'pickaxe', placeable: false, maxDurability: 64 },
-    torch: { name: 'Torch', color: '#FF8C00', icon: 'torch', placeable: false, maxDurability: 120, stackDurability: true }
+    torch: { name: 'Torch', color: '#FF8C00', icon: 'torch', placeable: false, maxDurability: 120, stackDurability: true },
+    book1: { name: 'Book', color: '#8B4513', icon: 'book', placeable: false }
   };
   
   // Crafting recipes
@@ -329,7 +398,8 @@ canvas { display: block; }
     { type: 'stone_pickaxe', count: 1, durability: 64 },
     { type: 'torch', count: 1, durability: 120 },
     { type: 'wood', count: Math.floor(Math.random() * 11) + 1 },
-    null, null, null, null, null, null
+    { type: 'book1', count: 1 },
+    null, null, null, null, null
   ];
   var selectedSlot = 0;
   var craftingGrid = [null, null, null, null, null, null, null, null, null];
@@ -401,6 +471,23 @@ canvas { display: block; }
       ctx.fillStyle = '#555555';
       ctx.fillRect(7, 6, 2, 2);
       ctx.fillRect(23, 6, 2, 2);
+    } else if (type === 'book1') {
+      ctx.fillStyle = '#5C2E0E';
+      ctx.fillRect(0, 0, 32, 32);
+      ctx.fillStyle = '#8B4513';
+      ctx.fillRect(3, 2, 26, 28);
+      ctx.fillStyle = '#A0522D';
+      ctx.fillRect(4, 3, 24, 26);
+      ctx.fillStyle = '#D2B48C';
+      ctx.fillRect(7, 5, 18, 22);
+      ctx.fillStyle = '#C4A882';
+      ctx.fillRect(8, 6, 16, 20);
+      ctx.fillStyle = '#8B7355';
+      for (var ly = 0; ly < 5; ly++) {
+        ctx.fillRect(10, 9 + ly * 3, 12, 1);
+      }
+      ctx.fillStyle = '#654321';
+      ctx.fillRect(3, 2, 2, 28);
     } else {
       var cfg = BLOCK_TYPES[type];
       if (cfg) {
@@ -412,6 +499,34 @@ canvas { display: block; }
   }
   window._craftingResult = { value: null };
   window._craftingOpen = { value: false };
+  window._bookGuideOpen = { value: false };
+  
+  window._toggleBookGuide = function(open) {
+    var overlay = document.getElementById('book-guide-overlay');
+    if (!overlay) return;
+    if (open === undefined) open = !window._bookGuideOpen.value;
+    window._bookGuideOpen.value = open;
+    overlay.classList.toggle('open', open);
+    if (open) {
+      document.exitPointerLock();
+    }
+  };
+  
+  var _bookGuideClose = document.getElementById('book-guide-close');
+  if (_bookGuideClose) {
+    _bookGuideClose.addEventListener('click', function() {
+      window._toggleBookGuide(false);
+    });
+  }
+  
+  var _bookGuideOverlay = document.getElementById('book-guide-overlay');
+  if (_bookGuideOverlay) {
+    _bookGuideOverlay.addEventListener('click', function(e) {
+      if (e.target === _bookGuideOverlay) {
+        window._toggleBookGuide(false);
+      }
+    });
+  }
   
   window._renderHotbar = function() {
     var el = document.getElementById('hotbar');
@@ -812,6 +927,14 @@ const BLOCK_TYPES = {
     maxDurability: 120,
     stackDurability: true,
     icon: 'torch'
+  },
+  book1: {
+    id: 'book1',
+    name: 'Book',
+    color: '#8B4513',
+    maxStack: 1,
+    placeable: false,
+    icon: 'book'
   }
 };
 
@@ -841,6 +964,7 @@ let _lastHealthUI = -1;
 let _lastOxygenUI = -1;
 let _lastVignetteOpacity = -1;
 let _lastSelectedItem = null;
+let _healTimer = 0;
 
 // Initialize hotbar - already done by inline script
 function initHotbar() {
@@ -878,6 +1002,29 @@ function getBlockMaterial(blockType) {
       ctx.fillStyle = '#666666';
       ctx.fillRect(2, 0, 12, 1);
       ctx.fillRect(2, 4, 12, 1);
+    } else if (blockType === 'wood') {
+      const base = hexToRgb('#DEB887');
+      ctx.fillStyle = '#DEB887';
+      ctx.fillRect(0, 0, 16, 16);
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          const grain = Math.sin(y * 0.8 + Math.sin(x * 0.3) * 2) * 15;
+          const noise = Math.random() * 10 - 5;
+          const r = Math.max(0, Math.min(255, base.r + grain + noise));
+          const g = Math.max(0, Math.min(255, base.g + grain + noise));
+          const b = Math.max(0, Math.min(255, base.b + grain + noise));
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          ctx.fillRect(x, y, 1, 1);
+        }
+      }
+      ctx.fillStyle = 'rgba(0,0,0,0.18)';
+      ctx.fillRect(0, 3, 16, 1);
+      ctx.fillRect(0, 7, 16, 1);
+      ctx.fillRect(0, 11, 16, 1);
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      ctx.fillRect(0, 4, 16, 1);
+      ctx.fillRect(0, 8, 16, 1);
+      ctx.fillRect(0, 12, 16, 1);
     } else {
       ctx.fillStyle = config.color;
       ctx.fillRect(0, 0, 16, 16);
@@ -1671,6 +1818,51 @@ initHotbar();
 // Health system
 let health = 20;
 let maxHealth = 20;
+let healthBonus = 0;
+
+function loadHealthBonus() {
+  try {
+    let saved = parseInt(localStorage.getItem('cavegame_healthBonus') || '0', 10);
+    let preserved = localStorage.getItem('cavegame_bonusPreserved') === '1';
+    if (preserved) {
+      localStorage.removeItem('cavegame_bonusPreserved');
+    } else {
+      saved = Math.floor(saved / 2);
+    }
+    if (saved > 0) {
+      localStorage.setItem('cavegame_healthBonus', saved.toString());
+    } else {
+      localStorage.removeItem('cavegame_healthBonus');
+    }
+    healthBonus = saved;
+    maxHealth = 20 + healthBonus;
+  } catch (e) {
+    healthBonus = 0;
+    maxHealth = 20;
+  }
+}
+loadHealthBonus();
+
+function saveHealthBonus() {
+  try {
+    localStorage.setItem('cavegame_healthBonus', healthBonus.toString());
+  } catch (e) {}
+}
+
+let _strengthTriggered = false;
+function checkStrength() {
+  if (health >= 100 && !_strengthTriggered) {
+    _strengthTriggered = true;
+    try { localStorage.setItem('cavegame_bonusPreserved', '1'); } catch (e) {}
+    const el = document.getElementById('strength-notify');
+    if (el) {
+      el.textContent = 'You become stronger';
+      el.classList.add('visible');
+      setTimeout(function() { el.classList.remove('visible'); }, 5000);
+    }
+  }
+}
+
 let spawnPosition = player.position.clone(); // Store spawn position for respawn
 
 // Death system
@@ -1713,6 +1905,9 @@ const MONSTER_DAMAGE = 1;
 const MONSTER_MAX_HEALTH = 20;
 const MONSTER_SPAWN_INTERVAL = 0.5;
 const MONSTER_SIZE = 3;
+const MONSTER_GRAVITY = -25;
+const MONSTER_JUMP_SPEED = Math.sqrt(2 * 25 * 7.5);
+const MONSTER_HALF_WIDTH = 0.5;
 
 const monsters = [];
 let monsterSpawnTimer = 0;
@@ -1771,10 +1966,29 @@ function spawnMonster() {
     x: x + 0.5,
     y: y,
     z: z + 0.5,
+    velocityY: 0,
+    onGround: true,
     health: MONSTER_MAX_HEALTH,
     attackCooldown: 0,
     mesh: sprite,
   });
+}
+
+function monsterCollides(mx, my, mz) {
+  const minBX = Math.floor(mx - MONSTER_HALF_WIDTH);
+  const maxBX = Math.floor(mx + MONSTER_HALF_WIDTH);
+  const minBY = Math.floor(my);
+  const maxBY = Math.floor(my + MONSTER_SIZE);
+  const minBZ = Math.floor(mz - MONSTER_HALF_WIDTH);
+  const maxBZ = Math.floor(mz + MONSTER_HALF_WIDTH);
+  for (let bx = minBX; bx <= maxBX; bx++) {
+    for (let by = minBY; by <= maxBY; by++) {
+      for (let bz = minBZ; bz <= maxBZ; bz++) {
+        if (hasBlock(bx, by, bz)) return true;
+      }
+    }
+  }
+  return false;
 }
 
 function updateMonsters(dt) {
@@ -1797,34 +2011,71 @@ function updateMonsters(dt) {
     }
   }
   
-  // Update each monster
   for (let i = monsters.length - 1; i >= 0; i--) {
     const m = monsters[i];
     
-    // Move toward player
+    m.velocityY += MONSTER_GRAVITY * dt;
+    
     const dx = player.position.x - m.x;
     const dz = player.position.z - m.z;
     const dist = Math.sqrt(dx * dx + dz * dz);
     
+    let horizontallyBlocked = false;
+    
     if (dist > 0.5) {
       const moveX = (dx / dist) * MONSTER_SPEED * dt;
       const moveZ = (dz / dist) * MONSTER_SPEED * dt;
-      m.x += moveX;
-      m.z += moveZ;
+      
+      const newX = m.x + moveX;
+      if (!monsterCollides(newX, m.y, m.z)) {
+        m.x = newX;
+      } else {
+        horizontallyBlocked = true;
+      }
+      
+      const newZ = m.z + moveZ;
+      if (!monsterCollides(m.x, m.y, newZ)) {
+        m.z = newZ;
+      } else {
+        horizontallyBlocked = true;
+      }
+      
+      if (horizontallyBlocked && m.onGround) {
+        m.velocityY = MONSTER_JUMP_SPEED;
+        m.onGround = false;
+      }
     }
     
-    // Ground collision
-    if (m.y < 0) m.y = 0;
+    const newY = m.y + m.velocityY * dt;
+    if (!monsterCollides(m.x, newY, m.z)) {
+      m.y = newY;
+      m.onGround = false;
+    } else {
+      if (m.velocityY < 0) {
+        let landY = Math.floor(newY) + 1;
+        let safety = 0;
+        while (monsterCollides(m.x, landY, m.z) && safety < 10) {
+          landY++;
+          safety++;
+        }
+        m.y = landY;
+        m.onGround = true;
+      }
+      m.velocityY = 0;
+    }
     
-    // Update mesh position (Sprite auto-faces camera)
+    if (m.y <= 0) {
+      m.y = 0;
+      m.velocityY = 0;
+      m.onGround = true;
+    }
+    
     m.mesh.position.set(m.x, m.y + MONSTER_SIZE / 2, m.z);
     
-    // Attack cooldown
     if (m.attackCooldown > 0) {
       m.attackCooldown -= dt;
     }
     
-    // Attack player if in range (both horizontal and vertical)
     const dy = Math.abs(player.position.y - m.y);
     if (dist <= MONSTER_ATTACK_RANGE && dy <= MONSTER_ATTACK_RANGE && m.attackCooldown <= 0) {
       health -= MONSTER_DAMAGE;
@@ -1835,10 +2086,14 @@ function updateMonsters(dt) {
       }
     }
     
-    // Remove dead monsters
     if (m.health <= 0) {
       scene.remove(m.mesh);
       monsters.splice(i, 1);
+      healthBonus += 2;
+      maxHealth = 20 + healthBonus;
+      health = Math.min(health + 1, maxHealth);
+      saveHealthBonus();
+      checkStrength();
     }
   }
 }
@@ -2090,6 +2345,21 @@ function update(dt) {
   oxygen += oxygenRate * dt;
   oxygen = Math.max(0, Math.min(maxOxygen, oxygen));
   
+  if (oxygen > 40 && oxygenRate >= 0 && health < maxHealth) {
+    if (!_healTimer) _healTimer = 0;
+    _healTimer += dt;
+    if (_healTimer >= 1) {
+      _healTimer -= 1;
+      if (oxygen >= 7) {
+        oxygen -= 7;
+        health = Math.min(health + 1, maxHealth);
+        checkStrength();
+      }
+    }
+  } else {
+    _healTimer = 0;
+  }
+  
   // Update torch light
   if (isHoldingTorch) {
     // Calculate light intensity based on durability
@@ -2210,32 +2480,31 @@ function respawnPlayer() {
 }
 
 const raycaster = new THREE.Raycaster();
-const _hitVirtualObj = { position: new THREE.Vector3(), isInstanced: true, block: { x: 0, y: 0, z: 0 } };
-
 const INTERACT_RANGE = 5;
 
 function getBlockIntersects() {
-  raycaster.setFromCamera(_screenCenter, camera);
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
   const hits = raycaster.intersectObjects(scene.children, false);
-  
+
   const result = [];
   for (const hit of hits) {
     if (hit.distance > INTERACT_RANGE) continue;
     if (hit.object === ground) continue;
-    
+
     if (hit.object === stoneInstancedMesh) {
       const instanceId = hit.instanceId;
       const key = instanceIdToKey.get(instanceId);
       if (!key) continue;
-      
+
       const [x, y, z] = keyToPos(key);
-      _hitVirtualObj.position.set(x + 0.5, y + 0.5, z + 0.5);
-      _hitVirtualObj.block.x = x;
-      _hitVirtualObj.block.y = y;
-      _hitVirtualObj.block.z = z;
-      
+      const virtualObject = {
+        position: new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5),
+        isInstanced: true,
+        block: { x, y, z }
+      };
+
       result.push({
-        object: _hitVirtualObj,
+        object: virtualObject,
         face: hit.face,
         point: hit.point,
         distance: hit.distance
@@ -2244,7 +2513,7 @@ function getBlockIntersects() {
       result.push(hit);
     }
   }
-  
+
   return result;
 }
 
@@ -2536,8 +2805,15 @@ document.addEventListener('mousedown', e => {
   if (!locked) return;
   if (craftingOpen) return;
   if (isDead) return;
+  if (window._bookGuideOpen.value) return;
   mouseDown = true;
   mouseButton = e.button;
+  
+  const selectedType = getSelectedBlockType();
+  if (selectedType === 'book1') {
+    window._toggleBookGuide(true);
+    return;
+  }
   
   if (e.button === 0) {
     // Check for monster hit first
