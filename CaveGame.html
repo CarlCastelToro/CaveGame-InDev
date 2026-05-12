@@ -375,7 +375,8 @@ canvas { display: block; }
     stick: { name: 'Stick', color: '#A0522D', icon: 'stick', placeable: false },
     stone_pickaxe: { name: 'Stone Pickaxe', color: '#808080', icon: 'pickaxe', placeable: false, maxDurability: 64 },
     torch: { name: 'Torch', color: '#FF8C00', icon: 'torch', placeable: false, maxDurability: 120, stackDurability: true },
-    book1: { name: 'Book', color: '#8B4513', icon: 'book', placeable: false }
+    book1: { name: 'Book', color: '#8B4513', icon: 'book', placeable: false },
+    sword: { name: 'Sword', color: '#4488ff', icon: 'sword', placeable: false }
   };
   
   // Crafting recipes
@@ -401,6 +402,13 @@ canvas { display: block; }
     { type: 'book1', count: 1 },
     null, null, null, null, null
   ];
+  try {
+    if (localStorage.getItem('cavegame_bonusPreserved') === '1') {
+      for (var si = 0; si < hotbarData.length; si++) {
+        if (!hotbarData[si]) { hotbarData[si] = { type: 'sword', count: 1 }; break; }
+      }
+    }
+  } catch (e) {}
   var selectedSlot = 0;
   var craftingGrid = [null, null, null, null, null, null, null, null, null];
   var craftingResult = null;
@@ -488,6 +496,30 @@ canvas { display: block; }
       }
       ctx.fillStyle = '#654321';
       ctx.fillRect(3, 2, 2, 28);
+    } else if (type === 'sword') {
+      ctx.fillStyle = '#2a1a3a';
+      ctx.fillRect(0, 0, 32, 32);
+      ctx.fillStyle = '#cc22cc';
+      ctx.fillRect(14, 22, 4, 8);
+      ctx.fillStyle = '#aa11aa';
+      ctx.fillRect(15, 23, 2, 6);
+      ctx.fillStyle = '#5533aa';
+      ctx.fillRect(12, 21, 8, 2);
+      ctx.fillStyle = '#7744cc';
+      ctx.fillRect(13, 22, 6, 1);
+      ctx.fillStyle = '#44aaff';
+      ctx.fillRect(14, 3, 4, 19);
+      ctx.fillStyle = '#66ccff';
+      ctx.fillRect(15, 4, 2, 17);
+      ctx.fillStyle = '#88ddff';
+      ctx.fillRect(15, 5, 1, 15);
+      ctx.fillStyle = '#2288dd';
+      ctx.fillRect(13, 3, 1, 18);
+      ctx.fillRect(18, 3, 1, 18);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(15, 3, 1, 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(16, 4, 1, 1);
     } else {
       var cfg = BLOCK_TYPES[type];
       if (cfg) {
@@ -935,6 +967,14 @@ const BLOCK_TYPES = {
     maxStack: 1,
     placeable: false,
     icon: 'book'
+  },
+  sword: {
+    id: 'sword',
+    name: 'Sword',
+    color: '#4488ff',
+    maxStack: 1,
+    placeable: false,
+    icon: 'sword'
   }
 };
 
@@ -1825,7 +1865,7 @@ function loadHealthBonus() {
     let saved = parseInt(localStorage.getItem('cavegame_healthBonus') || '0', 10);
     let preserved = localStorage.getItem('cavegame_bonusPreserved') === '1';
     if (preserved) {
-      localStorage.removeItem('cavegame_bonusPreserved');
+      //localStorage.removeItem('cavegame_bonusPreserved');
     } else {
       saved = Math.floor(saved / 2);
     }
@@ -1836,6 +1876,7 @@ function loadHealthBonus() {
     }
     healthBonus = saved;
     maxHealth = 20 + healthBonus;
+    health = maxHealth;
   } catch (e) {
     healthBonus = 0;
     maxHealth = 20;
@@ -1873,11 +1914,11 @@ const DEATH_SCREEN_DELAY = 2;
 const DEATH_CAMERA_DISTANCE = 16;
 
 // Oxygen system
-let oxygen = 100;
-let maxOxygen = 100;
+let maxOxygen = 100 + parseInt(localStorage.getItem('cavegame_healthBonus') || '0', 10) / 4;
+let oxygen = 100 + parseInt(localStorage.getItem('cavegame_healthBonus') || '0', 10) / 4;
 window._oxygen = { get value() { return oxygen; }, set value(v) { oxygen = Math.max(0, Math.min(maxOxygen, v)); } };
-const idealSpaceSize = 10; // Linear midpoint for space size
-const oxygenDamageTimer = 5; // Seconds between damage when oxygen is 0 (doubled speed)
+const idealSpaceSize = 3;
+const oxygenDamageTimer = 5;
 let oxygenDamageCounter = 0;
 
 // Torch light system
@@ -2310,7 +2351,7 @@ function update(dt) {
     _spaceSizeCache = getSpaceSize(player.position);
   }
   currentSpaceSize = _spaceSizeCache;
-  let oxygenRate = (currentSpaceSize - idealSpaceSize) * 0.1; // Linear relationship
+  let oxygenRate = (currentSpaceSize - idealSpaceSize) * 0.2;
   
   // Apply health bonus to consumption rate
   if (oxygenRate < 0) {
@@ -2821,7 +2862,8 @@ document.addEventListener('mousedown', e => {
     if (monsterHit) {
       const selectedType = getSelectedBlockType();
       let damage = 1;
-      if (selectedType === 'torch') damage = 20;
+      if (selectedType === 'sword') damage = 20;
+      else if (selectedType === 'torch') damage = 20;
       else if (selectedType === 'stone_pickaxe') damage = 10;
       else if (selectedType === 'stick') damage = 5;
       damageMonster(monsterHit, damage);
