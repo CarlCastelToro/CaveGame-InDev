@@ -309,6 +309,154 @@ canvas { display: block; }
 #strength-notify.visible {
   opacity: 1;
 }
+
+/* Mobile controls - hidden by default */
+#mobile-controls {
+  display: none;
+  z-index: 150;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+#mobile-controls.active {
+  display: block;
+}
+#mobile-controls .mobile-btn {
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  touch-action: none;
+  opacity: 0.5;
+  transition: opacity 0.1s;
+  z-index: 160;
+}
+#mobile-controls .mobile-btn:active {
+  opacity: 0.8;
+}
+#mobile-controls .mobile-btn-label {
+  color: #fff;
+  font: bold 16px sans-serif;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+  pointer-events: none;
+}
+
+/* D-Pad */
+#mobile-dpad {
+  position: fixed;
+  bottom: 30px;
+  left: 30px;
+  width: 160px;
+  height: 160px;
+  z-index: 160;
+}
+#mobile-dpad .mobile-btn {
+  position: absolute;
+  width: 54px;
+  height: 54px;
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.3);
+}
+#btn-forward {
+  top: 0; left: 50%; transform: translateX(-50%);
+}
+#btn-back {
+  bottom: 0; left: 50%; transform: translateX(-50%);
+}
+#btn-left {
+  left: 0; top: 50%; transform: translateY(-50%);
+}
+#btn-right {
+  right: 0; top: 50%; transform: translateY(-50%);
+}
+
+/* Jump button */
+#btn-jump {
+  position: fixed;
+  bottom: 40px;
+  right: 30px;
+  width: 70px;
+  height: 70px;
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+  z-index: 160;
+}
+
+/* Action buttons (mine / place) */
+#mobile-actions {
+  position: fixed;
+  bottom: 130px;
+  right: 30px;
+  display: flex;
+  gap: 12px;
+  z-index: 160;
+}
+#mobile-actions .mobile-btn {
+  width: 60px;
+  height: 60px;
+  background: rgba(255,100,100,0.2);
+  border: 2px solid rgba(255,100,100,0.4);
+  border-radius: 50%;
+}
+#btn-mine {
+  background: rgba(255,100,100,0.2);
+  border-color: rgba(255,100,100,0.4);
+}
+#btn-place {
+  background: rgba(100,100,255,0.2);
+  border-color: rgba(100,100,255,0.4);
+}
+
+/* Item switch buttons */
+#mobile-switch {
+  position: fixed;
+  bottom: 30px;
+  left: 200px;
+  display: flex;
+  gap: 8px;
+}
+#mobile-switch .mobile-btn {
+  width: 50px;
+  height: 50px;
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 50%;
+}
+
+/* Camera look area (top area of screen, avoids bottom buttons) */
+#mobile-look-area {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100%; height: calc(100% - 110px);
+  z-index: 140;
+  pointer-events: none;
+  touch-action: none;
+}
+#mobile-look-area.active {
+  pointer-events: auto;
+}
+
+/* Crafting open button (replaces I key on mobile) */
+#btn-craft-open {
+  position: fixed;
+  top: 10px; right: 10px;
+  width: 44px; height: 44px;
+  background: rgba(255,255,255,0.15);
+  border: 2px solid rgba(255,255,255,0.3);
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  z-index: 150;
+  pointer-events: auto;
+  touch-action: none;
+}
+#btn-craft-open .mobile-btn-label {
+  color: #fff; font: bold 18px sans-serif;
+  text-shadow: 1px 1px 2px rgba(0,0,0,0.8);
+  pointer-events: none;
+}
 </style>
 </head>
 <body>
@@ -333,6 +481,25 @@ canvas { display: block; }
   </div>
 </div>
 <div id="hotbar"></div>
+<div id="mobile-controls">
+  <div id="mobile-dpad">
+    <div class="mobile-btn" id="btn-forward"><span class="mobile-btn-label">W</span></div>
+    <div class="mobile-btn" id="btn-back"><span class="mobile-btn-label">S</span></div>
+    <div class="mobile-btn" id="btn-left"><span class="mobile-btn-label">A</span></div>
+    <div class="mobile-btn" id="btn-right"><span class="mobile-btn-label">D</span></div>
+  </div>
+  <div class="mobile-btn" id="btn-jump"><span class="mobile-btn-label">⬆</span></div>
+  <div id="mobile-actions">
+    <div class="mobile-btn" id="btn-mine"><span class="mobile-btn-label">⛏</span></div>
+    <div class="mobile-btn" id="btn-place"><span class="mobile-btn-label">+ </span></div>
+  </div>
+  <div id="mobile-switch">
+    <div class="mobile-btn" id="btn-prev-item"><span class="mobile-btn-label">◀</span></div>
+    <div class="mobile-btn" id="btn-next-item"><span class="mobile-btn-label">▶</span></div>
+  </div>
+  <div id="mobile-look-area"></div>
+  <div id="btn-craft-open"><span class="mobile-btn-label">I</span></div>
+</div>
 <div id="crafting-overlay">
   <div id="crafting-panel">
     <div id="crafting-title">Crafting</div>
@@ -2896,6 +3063,257 @@ document.addEventListener('mouseup', e => {
 
 document.addEventListener('contextmenu', e => e.preventDefault());
 
+// --- Mobile Controls ---
+const isMobile = (function() {
+  if ('ontouchstart' in window || navigator.maxTouchPoints > 0) {
+    return true;
+  }
+  return false;
+})();
+
+if (isMobile) {
+  const mc = document.getElementById('mobile-controls');
+  if (mc) mc.classList.add('active');
+
+  const mobileKeys = {
+    forward: false,
+    back: false,
+    left: false,
+    right: false,
+    jump: false
+  };
+
+  function mobileSetKey(code, val) { keys[code] = val; }
+
+  const btnForward = document.getElementById('btn-forward');
+  const btnBack    = document.getElementById('btn-back');
+  const btnLeft    = document.getElementById('btn-left');
+  const btnRight   = document.getElementById('btn-right');
+  const btnJump    = document.getElementById('btn-jump');
+  const btnMine    = document.getElementById('btn-mine');
+  const btnPlace   = document.getElementById('btn-place');
+  const btnPrev    = document.getElementById('btn-prev-item');
+  const btnNext    = document.getElementById('btn-next-item');
+
+  function bindDpadBtn(el, keyW, keyS, keyA, keyD) {
+    if (!el) return;
+    const set = (code, val) => { mobileKeys[code] = val; mobileSetKey(code, val); };
+    el.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (keyW) set('KeyW', true);
+      if (keyS) set('KeyS', true);
+      if (keyA) set('KeyA', true);
+      if (keyD) set('KeyD', true);
+    }, { passive: false });
+    el.addEventListener('touchend', e => {
+      e.preventDefault();
+      if (keyW) set('KeyW', false);
+      if (keyS) set('KeyS', false);
+      if (keyA) set('KeyA', false);
+      if (keyD) set('KeyD', false);
+    }, { passive: false });
+    el.addEventListener('touchcancel', e => {
+      if (keyW) set('KeyW', false);
+      if (keyS) set('KeyS', false);
+      if (keyA) set('KeyA', false);
+      if (keyD) set('KeyD', false);
+    });
+  }
+
+  bindDpadBtn(btnForward, true);
+  bindDpadBtn(btnBack,    false, true);
+  bindDpadBtn(btnLeft,    false, false, true);
+  bindDpadBtn(btnRight,   false, false, false, true);
+
+  function bindToggleBtn(el, code) {
+    if (!el) return;
+    el.addEventListener('touchstart', e => {
+      e.preventDefault();
+      mobileSetKey(code, true);
+    }, { passive: false });
+    el.addEventListener('touchend', e => {
+      e.preventDefault();
+      mobileSetKey(code, false);
+    }, { passive: false });
+    el.addEventListener('touchcancel', () => mobileSetKey(code, false));
+  }
+  bindToggleBtn(btnJump, 'Space');
+
+  // Mine button (left click)
+  function getMobileRayTarget() {
+    const dir = new THREE.Vector3(0, 0, -1);
+    dir.applyQuaternion(camera.quaternion);
+    const raycaster = new THREE.Raycaster(camera.position.clone(), dir, 0, 6);
+    const intersects = raycaster.intersectObjects(scene.children, true);
+    return intersects;
+  }
+
+  let mobileMining = false;
+  if (btnMine) {
+    btnMine.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (!locked || craftingOpen || isDead) return;
+      if (window._bookGuideOpen && window._bookGuideOpen.value) return;
+
+      const selectedType = getSelectedBlockType();
+      if (selectedType === 'book1') {
+        window._toggleBookGuide(true);
+        return;
+      }
+
+      const monsterHit = getMonsterIntersect();
+      if (monsterHit) {
+        let damage = 1;
+        if (selectedType === 'sword') damage = 20;
+        else if (selectedType === 'torch') damage = 20;
+        else if (selectedType === 'stone_pickaxe') damage = 10;
+        else if (selectedType === 'stick') damage = 5;
+        damageMonster(monsterHit, damage);
+        return;
+      }
+      mobileMining = true;
+      mouseDown = true;
+      mouseButton = 0;
+      startMining();
+    }, { passive: false });
+    btnMine.addEventListener('touchend', e => {
+      e.preventDefault();
+      mobileMining = false;
+      mouseDown = false;
+      stopMining();
+    }, { passive: false });
+    btnMine.addEventListener('touchcancel', () => {
+      mobileMining = false;
+      mouseDown = false;
+      stopMining();
+    });
+  }
+
+  // Place button (right click)
+  if (btnPlace) {
+    btnPlace.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (!locked || craftingOpen || isDead) return;
+      if (window._bookGuideOpen && window._bookGuideOpen.value) return;
+
+      const selectedType = getSelectedBlockType();
+      if (selectedType === 'book1') {
+        window._toggleBookGuide(true);
+        return;
+      }
+
+      const blockHits = getBlockIntersects();
+      if (blockHits.length > 0) {
+        const hit = blockHits[0];
+        const newPos = hit.object.position.clone().add(hit.face.normal);
+        placeBlock(newPos);
+      } else {
+        const groundHit = getGroundIntersect();
+        if (groundHit) {
+          const pos = groundHit.point.clone().floor().addScalar(0.5);
+          pos.y = 0.5;
+          placeBlock(pos);
+        }
+      }
+    }, { passive: false });
+  }
+
+  // Prev/Next item buttons
+  function mobileScrollHotbar(dir) {
+    if (dir > 0) {
+      selectedSlot = (selectedSlot + 1) % HOTBAR_SIZE;
+    } else {
+      selectedSlot = (selectedSlot - 1 + HOTBAR_SIZE) % HOTBAR_SIZE;
+    }
+    renderHotbar();
+  }
+  if (btnPrev) {
+    btnPrev.addEventListener('touchstart', e => {
+      e.preventDefault();
+      mobileScrollHotbar(-1);
+    }, { passive: false });
+  }
+  if (btnNext) {
+    btnNext.addEventListener('touchstart', e => {
+      e.preventDefault();
+      mobileScrollHotbar(1);
+    }, { passive: false });
+  }
+
+  // On mobile, auto-lock: skip blocker, set locked = true directly
+  blocker.style.display = 'none';
+  locked = true;
+
+  // Allow tapping on game canvas to re-engage if needed
+  renderer.domElement.addEventListener('touchstart', () => {
+    if (!locked && !isDead) {
+      locked = true;
+      blocker.style.display = 'none';
+    }
+  });
+
+  // Camera look area - touch drag on the right side of screen rotates camera
+  const lookArea = document.getElementById('mobile-look-area');
+  if (lookArea) {
+    lookArea.classList.add('active');
+    let lookTouchId = null;
+    let lookLastX = 0;
+    let lookLastY = 0;
+    lookArea.addEventListener('touchstart', e => {
+      if (lookTouchId !== null) return;
+      const t = e.changedTouches[0];
+      lookTouchId = t.identifier;
+      lookLastX = t.clientX;
+      lookLastY = t.clientY;
+    }, { passive: true });
+    document.addEventListener('touchmove', e => {
+      if (lookTouchId === null) return;
+      for (let i = 0; i < e.touches.length; i++) {
+        const t = e.touches[i];
+        if (t.identifier === lookTouchId) {
+          const dx = t.clientX - lookLastX;
+          const dy = t.clientY - lookLastY;
+          lookLastX = t.clientX;
+          lookLastY = t.clientY;
+          if (!locked) return;
+          player.rotation.y -= dx * 0.003;
+          pitch.rotation.x -= dy * 0.003;
+          pitch.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch.rotation.x));
+          break;
+        }
+      }
+    }, { passive: true });
+    const endLookTouch = e => {
+      for (let i = 0; i < e.changedTouches.length; i++) {
+        if (e.changedTouches[i].identifier === lookTouchId) {
+          lookTouchId = null;
+          break;
+        }
+      }
+    };
+    document.addEventListener('touchend', endLookTouch);
+    document.addEventListener('touchcancel', endLookTouch);
+  }
+
+  // Crafting button for mobile
+  const btnCraftOpen = document.getElementById('btn-craft-open');
+  if (btnCraftOpen) {
+    btnCraftOpen.addEventListener('touchstart', e => {
+      e.preventDefault();
+      e.stopPropagation();
+      craftingOpen = !craftingOpen;
+      window._craftingOpen.value = craftingOpen;
+      const overlay = document.getElementById('crafting-overlay');
+      if (overlay) {
+        overlay.classList.toggle('open', craftingOpen);
+        if (craftingOpen) {
+          window._renderCraftingGrid();
+        }
+      }
+    }, { passive: false });
+  }
+}
+
 const clock = new THREE.Clock();
 const statsElement = document.getElementById('stats');
 const vignetteElement = document.getElementById('vignette');
@@ -2950,7 +3368,8 @@ function animate() {
     const selName = sel ? BLOCK_TYPES[sel.type].name : 'Empty';
     const selCount = sel ? sel.count : 0;
     const timePct = Math.round(dayNightSystem.time * 100);
-    statsElement.innerHTML = `FPS: ${fps}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Selected: ${selName} (${selCount})<br>Time: ${timePct}%`;
+    const selDur = sel && sel.durability !== undefined ? ` [${sel.durability}/${BLOCK_TYPES[sel.type].maxDurability}]` : '';
+    statsElement.innerHTML = `FPS: ${fps}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Selected: ${selName}${selCount > 1 ? ' (' + selCount + ')' : ''}${selDur}<br>Time: ${timePct}%`;
   }
   
   // Update status bars only when values change
