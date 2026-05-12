@@ -34,6 +34,172 @@ canvas { display: block; }
   opacity: 0;
   transition: opacity 0.3s;
 }
+
+/* Hotbar styles */
+#hotbar {
+  position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 4px; z-index: 100;
+  pointer-events: none;
+}
+.hotbar-slot {
+  width: 52px; height: 52px;
+  background: rgba(0,0,0,0.7);
+  border: 2px solid #555;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  position: relative;
+  transition: border-color 0.1s;
+}
+.hotbar-slot.selected {
+  border-color: #fff;
+  background: rgba(255,255,255,0.2);
+}
+.hotbar-slot .slot-number {
+  position: absolute; top: 2px; left: 4px;
+  color: #aaa; font: 10px monospace;
+}
+.hotbar-slot .slot-icon {
+  width: 32px; height: 32px;
+  border-radius: 3px;
+}
+.hotbar-slot .slot-count {
+  position: absolute; bottom: 2px; right: 4px;
+  color: #fff; font: 12px monospace;
+  text-shadow: 1px 1px 2px #000;
+}
+.hotbar-slot .slot-name {
+  position: absolute; bottom: -18px; left: 50%; transform: translateX(-50%);
+  color: #fff; font: 11px sans-serif;
+  white-space: nowrap; opacity: 0;
+  transition: opacity 0.2s;
+  text-shadow: 1px 1px 2px #000;
+}
+.hotbar-slot.selected .slot-name {
+  opacity: 1;
+}
+
+/* Status bars styles */
+#status-bars {
+  position: fixed; bottom: 84px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; gap: 4px; z-index: 100;
+  pointer-events: none; width: 480px;
+}
+.status-bar {
+  width: 100%; height: 16px;
+  background: rgba(0,0,0,0.7);
+  border: 1px solid #555;
+  position: relative;
+  overflow: hidden;
+}
+.status-bar .bar-fill {
+  height: 100%;
+  transition: width 0.3s;
+}
+.status-bar .bar-label {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  color: #fff; font: 10px monospace;
+  text-shadow: 1px 1px 1px #000;
+  white-space: nowrap;
+}
+#health-bar .bar-fill {
+  background: linear-gradient(to bottom, #ff4444, #cc0000);
+}
+#oxygen-bar .bar-fill {
+  background: linear-gradient(to bottom, #4488ff, #0044cc);
+}
+
+/* Crafting UI styles */
+#crafting-overlay {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.7); z-index: 200;
+  display: none; align-items: center; justify-content: center;
+  pointer-events: auto;
+}
+#crafting-overlay.open {
+  display: flex;
+}
+#crafting-panel {
+  background: #3a3a3a;
+  border: 3px solid #555;
+  border-radius: 8px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+#crafting-title {
+  color: #fff;
+  font: 18px sans-serif;
+  margin-bottom: 10px;
+}
+#crafting-container {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+#crafting-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 52px);
+  gap: 4px;
+}
+#crafting-arrow {
+  color: #fff;
+  font: 32px sans-serif;
+}
+#crafting-result {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+#crafting-inventory {
+  display: grid;
+  grid-template-columns: repeat(9, 52px);
+  gap: 4px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 2px solid #555;
+}
+.crafting-cell {
+  width: 52px;
+  height: 52px;
+  background: #555;
+  border: 2px solid #777;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  cursor: pointer;
+}
+.crafting-cell:hover {
+  border-color: #aaa;
+}
+.crafting-cell.result {
+  background: #4a7a4a;
+  border-color: #6a9a6a;
+}
+.crafting-cell.result:hover {
+  border-color: #8aba8a;
+}
+.crafting-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 3px;
+}
+.crafting-count {
+  position: absolute;
+  bottom: 2px;
+  right: 4px;
+  color: #fff;
+  font: 12px monospace;
+  text-shadow: 1px 1px 2px #000;
+}
+#crafting-help {
+  color: #aaa;
+  font: 12px sans-serif;
+  margin-top: 10px;
+}
 </style>
 </head>
 <body>
@@ -41,6 +207,368 @@ canvas { display: block; }
 <div id="crosshair"></div>
 <div id="vignette"></div>
 <div id="stats">FPS: 0<br>X: 0 Y: 0 Z: 0</div>
+<div id="status-bars">
+  <div id="health-bar" class="status-bar">
+    <div class="bar-fill" style="width: 100%"></div>
+    <span class="bar-label">Health: 20/20</span>
+  </div>
+  <div id="oxygen-bar" class="status-bar">
+    <div class="bar-fill" style="width: 100%"></div>
+    <span class="bar-label">Oxygen: 100/100</span>
+  </div>
+</div>
+<div id="hotbar"></div>
+<div id="crafting-overlay">
+  <div id="crafting-panel">
+    <div id="crafting-title">Crafting</div>
+    <div id="crafting-container">
+      <div id="crafting-grid"></div>
+      <div id="crafting-arrow">→</div>
+      <div id="crafting-result"></div>
+    </div>
+    <div id="crafting-inventory"></div>
+    <div id="crafting-help">Press I to close | Click grid to return item | Click result to craft</div>
+  </div>
+</div>
+<script>
+(function() {
+  var BLOCK_TYPES = {
+    stone: { name: 'Stone', color: '#808080' },
+    dirt: { name: 'Dirt', color: '#8B4513' },
+    sand: { name: 'Sand', color: '#C2B280' },
+    wood: { name: 'Wood', color: '#DEB887' },
+    cobblestone: { name: 'Cobblestone', color: '#696969' },
+    glass: { name: 'Glass', color: '#ADD8E6' },
+    brick: { name: 'Brick', color: '#B22222' },
+    snow: { name: 'Snow', color: '#FFFAFA' },
+    obsidian: { name: 'Obsidian', color: '#1A1A2E' },
+    stick: { name: 'Stick', color: '#A0522D', icon: 'stick' },
+    stone_pickaxe: { name: 'Stone Pickaxe', color: '#808080', icon: 'pickaxe' }
+  };
+  
+  // Crafting recipes
+  var RECIPES = [
+    {
+      pattern: [['wood', null, null], ['wood', null, null], [null, null, null]],
+      result: { type: 'stick', count: 4 }
+    },
+    {
+      pattern: [['stone', 'stone', 'stone'], [null, 'stick', null], [null, 'stick', null]],
+      result: { type: 'stone_pickaxe', count: 1 }
+    }
+  ];
+  
+  var hotbarData = [
+    { type: 'stone', count: 32 },
+    { type: 'dirt', count: 32 },
+    { type: 'cobblestone', count: 16 },
+    { type: 'wood', count: 16 },
+    { type: 'sand', count: 16 },
+    null, null, null, null
+  ];
+  var selectedSlot = 0;
+  var craftingGrid = [null, null, null, null, null, null, null, null, null];
+  var craftingResult = null;
+  var craftingOpen = false;
+
+  window._hotbarData = hotbarData;
+  window._selectedSlot = { value: 0 };
+  window._BLOCK_TYPES = BLOCK_TYPES;
+  window._craftingGrid = craftingGrid;
+
+  function createItemIcon(type) {
+    var canvas = document.createElement('canvas');
+    canvas.width = 32;
+    canvas.height = 32;
+    canvas.style.width = '32px';
+    canvas.style.height = '32px';
+    canvas.style.borderRadius = '3px';
+    var ctx = canvas.getContext('2d');
+    
+    if (type === 'stick') {
+      ctx.fillStyle = '#6B3A1F';
+      ctx.fillRect(0, 0, 32, 32);
+      ctx.fillStyle = '#8B5E3C';
+      ctx.fillRect(13, 2, 6, 28);
+      ctx.fillStyle = '#A0724B';
+      ctx.fillRect(14, 3, 4, 26);
+      ctx.fillStyle = '#5C2E0E';
+      ctx.fillRect(13, 2, 1, 28);
+      ctx.fillRect(18, 2, 1, 28);
+      ctx.fillStyle = '#7B4B2A';
+      ctx.fillRect(15, 6, 2, 2);
+      ctx.fillRect(15, 14, 2, 2);
+      ctx.fillRect(15, 22, 2, 2);
+    } else if (type === 'stone_pickaxe') {
+      ctx.fillStyle = '#6B3A1F';
+      ctx.fillRect(0, 0, 32, 32);
+      ctx.fillStyle = '#8B5E3C';
+      ctx.fillRect(14, 10, 4, 20);
+      ctx.fillStyle = '#A0724B';
+      ctx.fillRect(15, 11, 2, 18);
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(4, 2, 24, 10);
+      ctx.fillStyle = '#999999';
+      ctx.fillRect(5, 3, 22, 8);
+      ctx.fillStyle = '#666666';
+      ctx.fillRect(4, 2, 24, 1);
+      ctx.fillRect(4, 11, 24, 1);
+      ctx.fillRect(4, 2, 1, 10);
+      ctx.fillRect(27, 2, 1, 10);
+      ctx.fillStyle = '#777777';
+      ctx.fillRect(6, 5, 4, 4);
+      ctx.fillRect(22, 5, 4, 4);
+      ctx.fillStyle = '#555555';
+      ctx.fillRect(7, 6, 2, 2);
+      ctx.fillRect(23, 6, 2, 2);
+    } else {
+      var cfg = BLOCK_TYPES[type];
+      if (cfg) {
+        ctx.fillStyle = cfg.color;
+        ctx.fillRect(0, 0, 32, 32);
+      }
+    }
+    return canvas;
+  }
+  window._craftingResult = { value: null };
+  window._craftingOpen = { value: false };
+  
+  window._renderHotbar = function() {
+    var el = document.getElementById('hotbar');
+    if (!el) return;
+    el.innerHTML = '';
+    for (var i = 0; i < 9; i++) {
+      var slot = document.createElement('div');
+      slot.className = 'hotbar-slot' + (i === window._selectedSlot.value ? ' selected' : '');
+      var num = document.createElement('span');
+      num.className = 'slot-number';
+      num.textContent = i + 1;
+      slot.appendChild(num);
+      if (hotbarData[i]) {
+        var cfg = BLOCK_TYPES[hotbarData[i].type];
+        if (cfg.icon) {
+          slot.appendChild(createItemIcon(hotbarData[i].type));
+        } else {
+          var icon = document.createElement('div');
+          icon.className = 'slot-icon';
+          icon.style.background = cfg.color;
+          slot.appendChild(icon);
+        }
+        if (hotbarData[i].count > 1) {
+          var cnt = document.createElement('span');
+          cnt.className = 'slot-count';
+          cnt.textContent = hotbarData[i].count;
+          slot.appendChild(cnt);
+        }
+        var name = document.createElement('span');
+        name.className = 'slot-name';
+        name.textContent = cfg.name;
+        slot.appendChild(name);
+      }
+      el.appendChild(slot);
+    }
+  };
+  window._renderHotbar();
+  
+  window._updateStatusBars = function(health, maxHealth, oxygen, maxOxygen) {
+    var healthBar = document.getElementById('health-bar');
+    var oxygenBar = document.getElementById('oxygen-bar');
+    if (healthBar) {
+      var healthPercent = (health / maxHealth) * 100;
+      healthBar.querySelector('.bar-fill').style.width = healthPercent + '%';
+      healthBar.querySelector('.bar-label').textContent = 'Health: ' + Math.round(health) + '/' + maxHealth;
+    }
+    if (oxygenBar) {
+      var oxygenPercent = (oxygen / maxOxygen) * 100;
+      oxygenBar.querySelector('.bar-fill').style.width = oxygenPercent + '%';
+      oxygenBar.querySelector('.bar-label').textContent = 'Oxygen: ' + Math.round(oxygen) + '/' + maxOxygen;
+    }
+  };
+  
+  function checkRecipe() {
+    for (var r = 0; r < RECIPES.length; r++) {
+      var recipe = RECIPES[r];
+      var match = true;
+      for (var i = 0; i < 9; i++) {
+        var expected = recipe.pattern[Math.floor(i / 3)][i % 3];
+        var actual = craftingGrid[i] ? craftingGrid[i].type : null;
+        if (expected !== actual) {
+          match = false;
+          break;
+        }
+      }
+      if (match) {
+        return recipe.result;
+      }
+    }
+    return null;
+  }
+  
+  window._renderCraftingGrid = function() {
+    var gridEl = document.getElementById('crafting-grid');
+    var resultEl = document.getElementById('crafting-result');
+    if (!gridEl || !resultEl) return;
+    
+    gridEl.innerHTML = '';
+    for (var i = 0; i < 9; i++) {
+      var cell = document.createElement('div');
+      cell.className = 'crafting-cell';
+      cell.dataset.index = i;
+      if (craftingGrid[i]) {
+        var cfg = BLOCK_TYPES[craftingGrid[i].type];
+        if (cfg.icon) {
+          var ci = createItemIcon(craftingGrid[i].type);
+          ci.className = 'crafting-icon';
+          cell.appendChild(ci);
+        } else {
+          var icon = document.createElement('div');
+          icon.className = 'crafting-icon';
+          icon.style.background = cfg.color;
+          cell.appendChild(icon);
+        }
+        if (craftingGrid[i].count > 1) {
+          var cnt = document.createElement('span');
+          cnt.className = 'crafting-count';
+          cnt.textContent = craftingGrid[i].count;
+          cell.appendChild(cnt);
+        }
+      }
+      cell.addEventListener('click', function() {
+        window._craftingCellClick(parseInt(this.dataset.index));
+      });
+      gridEl.appendChild(cell);
+    }
+    
+    craftingResult = checkRecipe();
+    window._craftingResult.value = craftingResult;
+    resultEl.innerHTML = '';
+    if (craftingResult) {
+      var cfg = BLOCK_TYPES[craftingResult.type];
+      var resultSlot = document.createElement('div');
+      resultSlot.className = 'crafting-cell result';
+      if (cfg.icon) {
+        var ri = createItemIcon(craftingResult.type);
+        ri.className = 'crafting-icon';
+        resultSlot.appendChild(ri);
+      } else {
+        var icon = document.createElement('div');
+        icon.className = 'crafting-icon';
+        icon.style.background = cfg.color;
+        resultSlot.appendChild(icon);
+      }
+      if (craftingResult.count > 1) {
+        var cnt = document.createElement('span');
+        cnt.className = 'crafting-count';
+        cnt.textContent = craftingResult.count;
+        resultSlot.appendChild(cnt);
+      }
+      resultSlot.addEventListener('click', function() {
+        window._craftingResultClick();
+      });
+      resultEl.appendChild(resultSlot);
+    }
+    
+    // Render inventory in crafting panel
+    var invEl = document.getElementById('crafting-inventory');
+    if (invEl) {
+      invEl.innerHTML = '';
+      for (var i = 0; i < 9; i++) {
+        var slot = document.createElement('div');
+        slot.className = 'crafting-cell';
+        slot.dataset.index = i;
+        if (hotbarData[i]) {
+          var cfg = BLOCK_TYPES[hotbarData[i].type];
+          if (cfg.icon) {
+            var ii = createItemIcon(hotbarData[i].type);
+            ii.className = 'crafting-icon';
+            slot.appendChild(ii);
+          } else {
+            var icon = document.createElement('div');
+            icon.className = 'crafting-icon';
+            icon.style.background = cfg.color;
+            slot.appendChild(icon);
+          }
+          if (hotbarData[i].count > 1) {
+            var cnt = document.createElement('span');
+            cnt.className = 'crafting-count';
+            cnt.textContent = hotbarData[i].count;
+            slot.appendChild(cnt);
+          }
+        }
+        slot.addEventListener('click', function() {
+          window._hotbarSlotClick(parseInt(this.dataset.index));
+        });
+        invEl.appendChild(slot);
+      }
+    }
+  };
+  
+  window._craftingCellClick = function(index) {
+    if (craftingGrid[index]) {
+      var item = craftingGrid[index];
+      craftingGrid[index] = null;
+      window._addToHotbar(item.type, item.count);
+      window._renderCraftingGrid();
+    }
+  };
+  
+  window._craftingResultClick = function() {
+    if (!craftingResult) return;
+    window._addToHotbar(craftingResult.type, craftingResult.count);
+    for (var i = 0; i < 9; i++) {
+      if (craftingGrid[i]) {
+        craftingGrid[i].count--;
+        if (craftingGrid[i].count <= 0) {
+          craftingGrid[i] = null;
+        }
+      }
+    }
+    craftingResult = null;
+    window._craftingResult.value = null;
+    window._renderCraftingGrid();
+    window._renderHotbar();
+  };
+  
+  window._addToHotbar = function(type, count) {
+    for (var i = 0; i < 9; i++) {
+      if (hotbarData[i] && hotbarData[i].type === type) {
+        hotbarData[i].count += count;
+        window._renderHotbar();
+        return true;
+      }
+    }
+    for (var i = 0; i < 9; i++) {
+      if (!hotbarData[i]) {
+        hotbarData[i] = { type: type, count: count };
+        window._renderHotbar();
+        return true;
+      }
+    }
+    return false;
+  };
+  
+  window._hotbarSlotClick = function(index) {
+    if (!window._craftingOpen.value) return;
+    if (!hotbarData[index]) return;
+    
+    var item = hotbarData[index];
+    
+    // Find first empty crafting grid cell
+    for (var i = 0; i < 9; i++) {
+      if (!craftingGrid[i]) {
+        craftingGrid[i] = { type: item.type, count: 1 };
+        item.count--;
+        if (item.count <= 0) {
+          hotbarData[index] = null;
+        }
+        window._renderCraftingGrid();
+        window._renderHotbar();
+        return;
+      }
+    }
+  };
+})();
+</script>
 <script type="importmap">
 { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
 </script>
@@ -61,6 +589,222 @@ const PLAYER_HEIGHT_COLLISION = 1.8;
 const blocks = new Set();
 // Block registry for rendering (visible blocks)
 const sceneBlocks = new Map(); // key -> mesh
+
+// Item/Block type registry
+const BLOCK_TYPES = {
+  stone: {
+    id: 'stone',
+    name: 'Stone',
+    color: '#808080',
+    maxStack: 64
+  },
+  dirt: {
+    id: 'dirt',
+    name: 'Dirt',
+    color: '#8B4513',
+    maxStack: 64
+  },
+  sand: {
+    id: 'sand',
+    name: 'Sand',
+    color: '#C2B280',
+    maxStack: 64
+  },
+  wood: {
+    id: 'wood',
+    name: 'Wood',
+    color: '#DEB887',
+    maxStack: 64
+  },
+  cobblestone: {
+    id: 'cobblestone',
+    name: 'Cobblestone',
+    color: '#696969',
+    maxStack: 64
+  },
+  glass: {
+    id: 'glass',
+    name: 'Glass',
+    color: '#ADD8E6',
+    maxStack: 64
+  },
+  brick: {
+    id: 'brick',
+    name: 'Brick',
+    color: '#B22222',
+    maxStack: 64
+  },
+  snow: {
+    id: 'snow',
+    name: 'Snow',
+    color: '#FFFAFA',
+    maxStack: 64
+  },
+  obsidian: {
+    id: 'obsidian',
+    name: 'Obsidian',
+    color: '#1A1A2E',
+    maxStack: 64
+  },
+  stick: {
+    id: 'stick',
+    name: 'Stick',
+    color: '#A0522D',
+    maxStack: 64
+  },
+  stone_pickaxe: {
+    id: 'stone_pickaxe',
+    name: 'Stone Pickaxe',
+    color: '#808080',
+    maxStack: 1
+  }
+};
+
+// Hotbar system
+const HOTBAR_SIZE = 9;
+const hotbar = window._hotbarData;
+let selectedSlot = window._selectedSlot.value;
+
+// Initialize hotbar - already done by inline script
+function initHotbar() {
+  renderHotbar();
+}
+
+// Create material cache for different block types
+const blockMaterials = {};
+function getBlockMaterial(blockType) {
+  if (!blockMaterials[blockType]) {
+    const config = BLOCK_TYPES[blockType];
+    if (!config) return stoneBlockMat; // fallback
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 16;
+    const ctx = canvas.getContext('2d');
+    
+    if (blockType === 'stick') {
+      ctx.fillStyle = '#5C2E0E';
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = '#8B5E3C';
+      ctx.fillRect(6, 0, 4, 16);
+      ctx.fillStyle = '#A0724B';
+      ctx.fillRect(7, 0, 2, 16);
+    } else if (blockType === 'stone_pickaxe') {
+      ctx.fillStyle = '#5C2E0E';
+      ctx.fillRect(0, 0, 16, 16);
+      ctx.fillStyle = '#8B5E3C';
+      ctx.fillRect(7, 4, 2, 12);
+      ctx.fillStyle = '#808080';
+      ctx.fillRect(2, 0, 12, 5);
+      ctx.fillStyle = '#999999';
+      ctx.fillRect(3, 1, 10, 3);
+      ctx.fillStyle = '#666666';
+      ctx.fillRect(2, 0, 12, 1);
+      ctx.fillRect(2, 4, 12, 1);
+    } else {
+      ctx.fillStyle = config.color;
+      ctx.fillRect(0, 0, 16, 16);
+      const baseColor = hexToRgb(config.color);
+      for (let x = 0; x < 16; x++) {
+        for (let y = 0; y < 16; y++) {
+          const noise = Math.random() * 30 - 15;
+          const r = Math.max(0, Math.min(255, baseColor.r + noise));
+          const g = Math.max(0, Math.min(255, baseColor.g + noise));
+          const b = Math.max(0, Math.min(255, baseColor.b + noise));
+          ctx.fillStyle = `rgb(${r},${g},${b})`;
+          ctx.fillRect(x, y, 1, 1);
+        }
+      }
+    }
+    
+    const texture = new THREE.CanvasTexture(canvas);
+    texture.magFilter = THREE.NearestFilter;
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(2, 2);
+    
+    blockMaterials[blockType] = new THREE.MeshStandardMaterial({
+      map: texture,
+      roughness: 0.8,
+      metalness: 0.2,
+      flatShading: true
+    });
+  }
+  return blockMaterials[blockType];
+}
+
+// Helper function to convert hex to RGB
+function hexToRgb(hex) {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : { r: 128, g: 128, b: 128 };
+}
+
+// Add item to hotbar
+function addItemToHotbar(blockType, count = 1) {
+  // First try to stack with existing items
+  for (let i = 0; i < HOTBAR_SIZE; i++) {
+    if (hotbar[i] && hotbar[i].type === blockType) {
+      const maxStack = BLOCK_TYPES[blockType].maxStack;
+      const canAdd = maxStack - hotbar[i].count;
+      const toAdd = Math.min(count, canAdd);
+      if (toAdd > 0) {
+        hotbar[i].count += toAdd;
+        count -= toAdd;
+        if (count <= 0) {
+          renderHotbar();
+          return true;
+        }
+      }
+    }
+  }
+  
+  // Then try to find empty slot
+  for (let i = 0; i < HOTBAR_SIZE; i++) {
+    if (!hotbar[i]) {
+      const maxStack = BLOCK_TYPES[blockType].maxStack;
+      const toAdd = Math.min(count, maxStack);
+      hotbar[i] = { type: blockType, count: toAdd };
+      count -= toAdd;
+      if (count <= 0) {
+        renderHotbar();
+        return true;
+      }
+    }
+  }
+  
+  renderHotbar();
+  return count <= 0;
+}
+
+// Remove item from selected slot
+function removeItemFromSlot(count = 1) {
+  if (hotbar[selectedSlot]) {
+    hotbar[selectedSlot].count -= count;
+    if (hotbar[selectedSlot].count <= 0) {
+      hotbar[selectedSlot] = null;
+    }
+    renderHotbar();
+    return true;
+  }
+  return false;
+}
+
+// Get selected block type
+function getSelectedBlockType() {
+  return hotbar[selectedSlot] ? hotbar[selectedSlot].type : null;
+}
+
+// Render hotbar UI
+function renderHotbar() {
+  window._selectedSlot.value = selectedSlot;
+  window._renderHotbar();
+}
+
+
 
 function posToKey(x, y, z) {
   return `${x},${y},${z}`;
@@ -545,6 +1289,9 @@ if (caveCenters.length > 0) {
 }
 scene.add(player);
 
+// Initialize hotbar system
+initHotbar();
+
 // Health system
 let health = 20;
 let maxHealth = 20;
@@ -560,8 +1307,49 @@ let oxygenDamageCounter = 0;
 let velocityY = 0;
 let onGround = false;
 const keys = {};
-document.addEventListener('keydown', e => keys[e.code] = true);
+let craftingOpen = false;
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  
+  // Hotbar selection with number keys 1-9
+  if (e.code >= 'Digit1' && e.code <= 'Digit9') {
+    const slotIndex = parseInt(e.code.replace('Digit', '')) - 1;
+    if (slotIndex >= 0 && slotIndex < HOTBAR_SIZE) {
+      selectedSlot = slotIndex;
+      renderHotbar();
+    }
+  }
+  
+  // Toggle crafting UI with I key
+  if (e.code === 'KeyI') {
+    craftingOpen = !craftingOpen;
+    window._craftingOpen.value = craftingOpen;
+    const overlay = document.getElementById('crafting-overlay');
+    if (overlay) {
+      overlay.classList.toggle('open', craftingOpen);
+      if (craftingOpen) {
+        window._renderCraftingGrid();
+        document.exitPointerLock();
+      } else {
+        renderer.domElement.requestPointerLock();
+      }
+    }
+  }
+});
 document.addEventListener('keyup',   e => keys[e.code] = false);
+
+// Mouse wheel for hotbar selection
+document.addEventListener('wheel', e => {
+  if (!locked) return;
+  if (e.deltaY > 0) {
+    // Scroll down - next slot
+    selectedSlot = (selectedSlot + 1) % HOTBAR_SIZE;
+  } else if (e.deltaY < 0) {
+    // Scroll up - previous slot
+    selectedSlot = (selectedSlot - 1 + HOTBAR_SIZE) % HOTBAR_SIZE;
+  }
+  renderHotbar();
+});
 
 const blocker = document.getElementById('blocker');
 let locked = false;
@@ -787,6 +1575,9 @@ function getGroundIntersect() {
 }
 
 function placeBlock(pos) {
+  const selectedType = getSelectedBlockType();
+  if (!selectedType) return; // No item selected
+  
   const x = Math.floor(pos.x);
   const y = Math.floor(pos.y);
   const z = Math.floor(pos.z);
@@ -798,14 +1589,21 @@ function placeBlock(pos) {
     return; // Cannot place block here
   }
   
+  // Remove item from hotbar
+  if (!removeItemFromSlot(1)) return;
+  
   // Add to collision registry
   addBlock(x, y, z);
   
+  // Get material for this block type
+  const material = getBlockMaterial(selectedType);
+  
   // Always generate block (placed blocks are always visible)
-  const block = new THREE.Mesh(stoneBlockGeo, stoneBlockMat);
+  const block = new THREE.Mesh(stoneBlockGeo, material);
   block.position.set(x + 0.5, y + 0.5, z + 0.5);
   block.castShadow = true;
   block.receiveShadow = true;
+  block.userData.blockType = selectedType; // Store block type
   scene.add(block);
   sceneBlocks.set(posToKey(x, y, z), block);
 }
@@ -939,11 +1737,13 @@ function raycastBlocks(origin, direction, maxDistance = 10) {
 
 document.addEventListener('mousedown', e => {
   if (!locked) return;
+  if (craftingOpen) return;
   const blockHits = getBlockIntersects();
   if (blockHits.length > 0) {
     const hit = blockHits[0];
     if (e.button === 0) {
       let bx, by, bz;
+      let blockType = 'stone'; // default
       
       if (hit.object.isInstanced) {
         // Instanced block
@@ -964,6 +1764,9 @@ document.addEventListener('mousedown', e => {
         bz = Math.floor(pos.z);
         const key = posToKey(bx, by, bz);
         
+        // Get block type from mesh userData
+        blockType = hit.object.userData.blockType || 'stone';
+        
         // Remove from collision registry
         removeBlock(bx, by, bz);
         // Remove from scene registry
@@ -971,6 +1774,9 @@ document.addEventListener('mousedown', e => {
         // Remove from scene
         scene.remove(hit.object);
       }
+      
+      // Add item to hotbar
+      addItemToHotbar(blockType, 1);
       
       // Update neighbor visibility
       const directions = [
@@ -1060,7 +1866,15 @@ function animate() {
   }
   
   const pos = player.position;
-  statsElement.innerHTML = `${fpsDisplay}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Health: ${health}/${maxHealth}<br>Oxygen: ${Math.round(oxygen)}/${maxOxygen}`;
+  const selectedItem = hotbar[selectedSlot];
+  const selectedName = selectedItem ? BLOCK_TYPES[selectedItem.type].name : 'Empty';
+  const selectedCount = selectedItem ? selectedItem.count : 0;
+  statsElement.innerHTML = `${fpsDisplay}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Selected: ${selectedName} (${selectedCount})`;
+  
+  // Update status bars
+  if (window._updateStatusBars) {
+    window._updateStatusBars(health, maxHealth, oxygen, maxOxygen);
+  }
   
   // Update vignette effect based on health
   const healthPercent = health / maxHealth;
