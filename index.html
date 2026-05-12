@@ -1515,22 +1515,25 @@ const structureCount = 15; // Number of structures to generate
 const minCoord = -halfGroundSize + 2; // Keep away from edges
 const maxCoord = halfGroundSize - 2;
 
+// Store structure data for completeness checking
+const structures = [];
+
 for (let i = 0; i < structureCount; i++) {
   const baseX = Math.floor(Math.random() * (maxCoord - minCoord)) + minCoord;
   const baseZ = Math.floor(Math.random() * (maxCoord - minCoord)) + minCoord;
   const baseY = 64; // On top of ground layers
   const rotation = Math.floor(Math.random() * 4); // 0, 1, 2, or 3
   
+  const structBlocks = [];
   for (const [dx, dy, dz] of structureCoords) {
     const [rotatedDx, rotatedDz] = rotateCoord(dx, dz, rotation);
     const x = baseX + rotatedDx;
     const y = baseY + dy;
     const z = baseZ + rotatedDz;
     
-    // Add to collision registry
     addBlock(x, y, z);
+    structBlocks.push({ x, y, z });
     
-    // Create independent mesh for structure block
     const block = new THREE.Mesh(stoneBlockGeo, stoneBlockMat);
     block.position.set(x + 0.5, y + 0.5, z + 0.5);
     block.castShadow = true;
@@ -1538,6 +1541,23 @@ for (let i = 0; i < structureCount; i++) {
     scene.add(block);
     sceneBlocks.set(posToKey(x, y, z), block);
   }
+  structures.push({ baseX, baseY, baseZ, blocks: structBlocks });
+}
+
+// Check how many structures are still complete
+function countCompleteStructures() {
+  let count = 0;
+  for (const s of structures) {
+    let complete = true;
+    for (const b of s.blocks) {
+      if (!hasBlock(b.x, b.y, b.z)) {
+        complete = false;
+        break;
+      }
+    }
+    if (complete) count++;
+  }
+  return count;
 }
 
 const pitch = new THREE.Object3D();
@@ -1606,6 +1626,148 @@ scene.add(caveAmbientLight);
 // Shared space size for cave/outdoor blending
 let currentSpaceSize = 10;
 
+// Monster system
+const MONSTER_SPEED = MOVE_SPEED * 0.495;
+const MONSTER_ATTACK_RANGE = 3;
+const MONSTER_ATTACK_COOLDOWN = 5;
+const MONSTER_DAMAGE = 1;
+const MONSTER_MAX_HEALTH = 20;
+const MONSTER_SPAWN_INTERVAL = 0.5;
+const MONSTER_SIZE = 3;
+
+const monsters = [];
+let monsterSpawnTimer = 0;
+
+// Load eye texture and create sprite material
+const monsterMaterial = new THREE.SpriteMaterial({
+  color: 0x800000,
+});
+const eyeTexture = new THREE.TextureLoader().load('eye.png', 
+  function(tex) { monsterMaterial.map = tex; monsterMaterial.needsUpdate = true; },
+  undefined,
+  function(err) { console.warn('Failed to load eye.png:', err); }
+);
+
+function isNightTime() {
+  const t = dayNightSystem.time;
+  return t >= 0.80 || t <= 0.20;
+}
+
+function spawnMonster() {
+  // Find a complete structure to spawn from
+  const completeStructures = structures.filter(s => 
+    s.blocks.every(b => hasBlock(b.x, b.y, b.z))
+  );
+  if (completeStructures.length === 0) return;
+  
+  // Pick a random complete structure
+  const struct = completeStructures[Math.floor(Math.random() * completeStructures.length)];
+  
+  // Pick a random position adjacent to the structure (within 2 blocks)
+  const offsets = [-2, -1, 0, 1, 2];
+  const dx = offsets[Math.floor(Math.random() * offsets.length)];
+  const dz = offsets[Math.floor(Math.random() * offsets.length)];
+  const x = struct.baseX + dx;
+  const z = struct.baseZ + dz;
+  
+  // Find ground level at this position (structure base Y)
+  const y = struct.baseY;
+  
+  // Ensure not inside a block and has ground below
+  if (hasBlock(x, y, z)) return;
+  if (hasBlock(x, y + 1, z)) return;
+  if (!hasBlock(x, y - 1, z)) return;
+  
+  // Ensure minimum 10 blocks from player
+  const pdx = player.position.x - x;
+  const pdz = player.position.z - z;
+  if (Math.sqrt(pdx * pdx + pdz * pdz) < 10) return;
+  
+  const sprite = new THREE.Sprite(monsterMaterial);
+  sprite.scale.set(MONSTER_SIZE, MONSTER_SIZE, 1);
+  sprite.position.set(x + 0.5, y + MONSTER_SIZE / 2, z + 0.5);
+  scene.add(sprite);
+  
+  monsters.push({
+    x: x + 0.5,
+    y: y,
+    z: z + 0.5,
+    health: MONSTER_MAX_HEALTH,
+    attackCooldown: 0,
+    mesh: sprite,
+  });
+}
+
+function updateMonsters(dt) {
+  // Spawn timer
+  monsterSpawnTimer += dt;
+  if (monsterSpawnTimer >= MONSTER_SPAWN_INTERVAL) {
+    monsterSpawnTimer -= MONSTER_SPAWN_INTERVAL;
+    
+    const heldType = getSelectedBlockType();
+    const holdingTorch = heldType === 'torch';
+    
+    if (player.position.y >= 60 && isNightTime() && !holdingTorch) {
+      const completeCount = countCompleteStructures();
+      if (completeCount > 0) {
+        const spawnChance = completeCount * 0.05;
+        if (Math.random() < spawnChance) {
+          spawnMonster();
+        }
+      }
+    }
+  }
+  
+  // Update each monster
+  for (let i = monsters.length - 1; i >= 0; i--) {
+    const m = monsters[i];
+    
+    // Move toward player
+    const dx = player.position.x - m.x;
+    const dz = player.position.z - m.z;
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    
+    if (dist > 0.5) {
+      const moveX = (dx / dist) * MONSTER_SPEED * dt;
+      const moveZ = (dz / dist) * MONSTER_SPEED * dt;
+      m.x += moveX;
+      m.z += moveZ;
+    }
+    
+    // Ground collision
+    if (m.y < 0) m.y = 0;
+    
+    // Update mesh position (Sprite auto-faces camera)
+    m.mesh.position.set(m.x, m.y + MONSTER_SIZE / 2, m.z);
+    
+    // Attack cooldown
+    if (m.attackCooldown > 0) {
+      m.attackCooldown -= dt;
+    }
+    
+    // Attack player if in range (both horizontal and vertical)
+    const dy = Math.abs(player.position.y - m.y);
+    if (dist <= MONSTER_ATTACK_RANGE && dy <= MONSTER_ATTACK_RANGE && m.attackCooldown <= 0) {
+      health -= MONSTER_DAMAGE;
+      m.attackCooldown = MONSTER_ATTACK_COOLDOWN;
+      if (health <= 0) {
+        health = 0;
+        respawnPlayer();
+      }
+    }
+    
+    // Remove dead monsters
+    if (m.health <= 0) {
+      scene.remove(m.mesh);
+      monsters.splice(i, 1);
+    }
+  }
+}
+
+function damageMonster(monster, damage) {
+  monster.health -= damage;
+}
+
 let velocityY = 0;
 let onGround = false;
 const keys = {};
@@ -1660,6 +1822,14 @@ document.addEventListener('keydown', e => {
         renderer.domElement.requestPointerLock();
       }
     }
+  }
+  
+  // Ctrl+B teleport to y=65
+  if (e.ctrlKey && e.code === 'KeyB') {
+    e.preventDefault();
+    player.position.y = 65;
+    velocityY = 0;
+    onGround = false;
   }
 });
 document.addEventListener('keyup',   e => keys[e.code] = false);
@@ -1923,6 +2093,9 @@ function update(dt) {
     velocityY = 0;
     onGround = true;
   }
+  
+  // Update monsters
+  updateMonsters(dt);
 }
 
 function respawnPlayer() {
@@ -1993,6 +2166,18 @@ function getGroundIntersect() {
   raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
   const hits = raycaster.intersectObject(ground);
   return hits.length > 0 ? hits[0] : null;
+}
+
+function getMonsterIntersect() {
+  if (monsters.length === 0) return null;
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  const meshes = monsters.map(m => m.mesh);
+  const hits = raycaster.intersectObjects(meshes, false);
+  if (hits.length > 0) {
+    const hitMesh = hits[0].object;
+    return monsters.find(m => m.mesh === hitMesh) || null;
+  }
+  return null;
 }
 
 function placeBlock(pos) {
@@ -2260,6 +2445,17 @@ document.addEventListener('mousedown', e => {
   mouseButton = e.button;
   
   if (e.button === 0) {
+    // Check for monster hit first
+    const monsterHit = getMonsterIntersect();
+    if (monsterHit) {
+      const selectedType = getSelectedBlockType();
+      let damage = 1;
+      if (selectedType === 'torch') damage = 20;
+      else if (selectedType === 'stone_pickaxe') damage = 10;
+      else if (selectedType === 'stick') damage = 5;
+      damageMonster(monsterHit, damage);
+      return;
+    }
     startMining();
   } else if (e.button === 2) {
     const blockHits = getBlockIntersects();
