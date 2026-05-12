@@ -1,220 +1,327 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CaveGame</title>
-<style>
-* { margin: 0; padding: 0; box-sizing: border-box; }
-body {
-  min-height: 100vh;
-  background: #0a0a0a;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-family: 'Segoe UI', sans-serif;
-  color: #fff;
-}
-h1 {
-  font-size: 4rem;
-  margin-bottom: 0.5rem;
-  text-shadow: 0 0 20px rgba(255,140,0,0.6);
-}
-.subtitle {
-  color: #888;
-  margin-bottom: 3rem;
-  font-size: 1.1rem;
-}
-.nav {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  width: 320px;
-}
-.nav a {
-  display: block;
-  padding: 16px 24px;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 8px;
-  color: #fff;
-  text-decoration: none;
-  transition: all 0.2s;
-}
-.nav a:hover {
-  background: #2a2a2a;
-  border-color: #555;
-  transform: translateY(-2px);
-}
-.nav a .label {
-  font-size: 1.2rem;
-  font-weight: 600;
-}
-.nav a .desc {
-  font-size: 0.85rem;
-  color: #888;
-  margin-top: 4px;
-}
-.story-section {
-  margin-top: 2rem;
-  width: 320px;
-}
-.story-toggle {
-  display: block;
-  width: 100%;
-  padding: 16px 24px;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 1.2rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: left;
-}
-.story-toggle:hover {
-  background: #2a2a2a;
-  border-color: #555;
-}
-.story-toggle::after {
-  content: '▼';
-  float: right;
-  transition: transform 0.3s;
-  font-size: 0.8rem;
-}
-.story-toggle.active::after {
-  transform: rotate(180deg);
-}
-.story-content {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.3s ease-out;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-top: none;
-  border-radius: 0 0 8px 8px;
-}
-.story-content.open {
-  max-height: 500px;
-}
-.story-text {
-  padding: 20px 24px;
-  color: #888;
-  font-size: 0.95rem;
-  line-height: 1.6;
-}
-.story-text p {
-  margin-bottom: 12px;
-}
-.story-text p:last-child {
-  margin-bottom: 0;
-}
-.about-toggle {
-  display: block;
-  width: 100%;
-  padding: 16px 24px;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 1.2rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.2s;
-  text-align: left;
-}
-.about-toggle:hover {
-  background: #2a2a2a;
-  border-color: #555;
-}
-.about-toggle::after {
-  content: '▼';
-  float: right;
-  transition: transform 0.3s;
-  font-size: 0.8rem;
-}
-.about-toggle.active::after {
-  transform: rotate(180deg);
-}
-.about-content {
-  max-height: 0;
-  overflow: hidden;
-  transition: max-height 0.3s ease-out;
-  background: #1a1a1a;
-  border: 1px solid #333;
-  border-top: none;
-  border-radius: 0 0 8px 8px;
-}
-.about-content.open {
-  max-height: 600px;
-}
-.about-text {
-  padding: 20px 24px;
-  color: #888;
-  font-size: 0.95rem;
-  line-height: 1.6;
-}
-.about-text p {
-  margin-bottom: 12px;
-}
-.about-text p:last-child {
-  margin-bottom: 0;
-}
-.about-text b {
-  color: #ccc;
-}
-</style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CaveGame</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      min-height: 100vh;
+      background: #0a0a0a;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Segoe UI', sans-serif;
+      color: #fff;
+      padding: 2rem 1rem;
+    }
+
+    .main-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 400px;
+      margin: auto 0;
+    }
+
+    h1 {
+      font-size: clamp(2.5rem, 10vw, 4rem);
+      margin-bottom: 0.5rem;
+      text-shadow: 0 0 20px rgba(255, 140, 0, 0.6);
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .subtitle {
+      color: #888;
+      margin-bottom: 3rem;
+      font-size: clamp(0.9rem, 3vw, 1.1rem);
+      text-align: center;
+    }
+
+    .nav {
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+      width: 100%;
+      max-width: 320px;
+    }
+
+    .nav a {
+      display: block;
+      padding: 16px 24px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      text-decoration: none;
+      transition: all 0.2s;
+    }
+
+    .nav a:hover {
+      background: #2a2a2a;
+      border-color: #555;
+      transform: translateY(-2px);
+    }
+
+    .nav a .label {
+      font-size: clamp(1rem, 3vw, 1.2rem);
+      font-weight: 600;
+    }
+
+    .nav a .desc {
+      font-size: 0.85rem;
+      color: #888;
+      margin-top: 4px;
+    }
+
+    .story-section {
+      margin-top: 2rem;
+      width: 100%;
+      max-width: 320px;
+    }
+
+    .story-toggle,
+    .about-toggle,
+    .copyright-toggle {
+      display: block;
+      width: 100%;
+      padding: 16px 24px;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-radius: 8px;
+      color: #fff;
+      font-size: clamp(1rem, 3vw, 1.2rem);
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      text-align: left;
+    }
+
+    .story-toggle:hover,
+    .about-toggle:hover,
+    .copyright-toggle:hover {
+      background: #2a2a2a;
+      border-color: #555;
+    }
+
+    .story-toggle::after,
+    .about-toggle::after,
+    .copyright-toggle::after {
+      content: '▼';
+      float: right;
+      transition: transform 0.3s;
+      font-size: 0.8rem;
+    }
+
+    .story-toggle.active::after,
+    .about-toggle.active::after,
+    .copyright-toggle.active::after {
+      transform: rotate(180deg);
+    }
+
+    .story-content,
+    .about-content,
+    .copyright-content {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease-out;
+      background: #1a1a1a;
+      border: 1px solid #333;
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+    }
+
+    .story-content.open {
+      max-height: 500px;
+    }
+
+    .about-content.open {
+      max-height: 600px;
+    }
+
+    .copyright-content.open {
+      max-height: 600px;
+    }
+
+    .story-text,
+    .about-text,
+    .copyright-text {
+      padding: 20px 24px;
+      color: #888;
+      font-size: 0.95rem;
+      line-height: 1.6;
+    }
+
+    .story-text p,
+    .about-text p,
+    .copyright-text p {
+      margin-bottom: 12px;
+    }
+
+    .story-text p:last-child,
+    .about-text p:last-child,
+    .copyright-text p:last-child {
+      margin-bottom: 0;
+    }
+
+    .about-text b,
+    .copyright-text b {
+      color: #ccc;
+    }
+
+    .hidden-secret {
+      opacity: 0;
+      max-height: 0;
+      overflow: hidden;
+      transition: all 0.8s ease;
+      margin-top: 2rem;
+      width: 100%;
+      max-width: 320px;
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 8px;
+      padding: 0 24px;
+      color: #555;
+      font-family: Georgia, 'Times New Roman', Times, serif;
+      line-height: 1.6;
+      font-size: 0.9rem;
+    }
+
+    .hidden-secret.show {
+      opacity: 1;
+      max-height: 800px;
+      padding: 20px 24px;
+    }
+
+    .hidden-secret p {
+      margin-bottom: 10px;
+    }
+  </style>
 </head>
+
 <body>
-<h1>CaveGame</h1>
-<p class="subtitle">A 3D GAME</p>
-<div class="nav">
-  <a href="FlatGame.html">
-    <div class="label">Original</div>
-    <div class="desc"></div>
-  </a>
-  <a href="CaveGame.html">
-    <div class="label">StoryMode</div>
-    <div class="desc">It was</div>
-  </a>
-</div>
-<div class="story-section">
-  <button class="story-toggle" onclick="toggleStory()">Story</button>
-  <div class="story-content" id="story-content">
-    <div class="story-text">
-      <p>How?</p>
-      <p>You used to be a ####. At that time, you still had some close friends. One day, you decided to explore your deep #### with your firends. You felt tired and fell asleep accidently.</p>
-      <p>When you got up, there is no one left, except you. You found you were trapped in the deepest area of ####.</p>
-      <p>Anyway, there were two simple tools and some planks you got. Will you escape the nightmare?</p>
+
+  <div class="main-wrap">
+    <h1 id="secretBtn">CaveGame</h1>
+    <p class="subtitle">A 3D GAME</p>
+
+    <div class="nav">
+      <a href="FlatGame.html">
+        <div class="label">Game InDev Version</div>
+        <div class="desc"></div>
+      </a>
+      <a href="CaveGame.html">
+        <div class="label">StoryMode</div>
+        <div class="desc">The Main Game</div>
+      </a>
+    </div>
+
+    <div class="story-section">
+      <button class="story-toggle" onclick="toggleStory()">Story</button>
+      <div class="story-content" id="story-content">
+        <div class="story-text">
+          <p>How?</p>
+          <p>You used to be a ####. At that time, you still had some close friends. One day, you decided to explore your
+            deep #### with your firends. You felt tired and fell asleep accidently.</p>
+          <p>When you got up, there is no one left, except you. You found you were trapped in the deepest area of ####.
+          </p>
+          <p>Anyway, there were two simple tools and some planks you got. Will you escape the nightmare?</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="story-section">
+      <button class="about-toggle" onclick="toggleAbout()">About</button>
+      <div class="about-content" id="about-content">
+        <div class="about-text">
+          <p><b>CaveGame</b> is a 3D voxel survival game built with Three.js.</p>
+          <p>Mine blocks, craft tools, manage your oxygen, and survive the dangers lurking in the dark caves.</p>
+          <p><b>Controls:</b> WASD to move, Space to jump, Left Click to mine, Right Click to place, Scroll/1-9 to
+            select items, I for crafting grid.</p>
+          <p>Don't click the title.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="story-section">
+      <button class="copyright-toggle" onclick="toggleCopyright()">Copyright</button>
+      <div class="copyright-content" id="copyright-content">
+        <div class="copyright-text">
+          <p><b>CaveGame</b> is a 3D voxel survival game built with Three.js.</p>
+          <p><b>Developer: </b>I Am System32</p>
+          <p><b>Disclaimer:</b> This game host on Cloudflare and it don't require any payment or accounts.</p>
+          <p>Modification, copying, or redistribution of the code is prohibited without the original author's permission</p>
+          <p><b>Copyright by IAmSystem32 2-26&copy;</b></p>
+          <p>Affiliated with gign.ltd</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="hidden-secret" id="secretText">
+      <p>What happens when a person is abandoned by everyone and forgotten by everyone?</p>
+      <p>A few people, like someone like Spamton, they once truly had fame.</p>
+      <p>But now?</p>
+      <p>They have nothing.</p>
+      <p>In the end, all that remains is ridicule, ridicule for useless efforts, and loneliness.</p>
+      <p>So, what should one do? My answer is: Become strong.</p>
+      <p>Get stronger. Defeat the people who laugh at you. Destroy the things that ridicule you.</p>
+      <p>Start from whom weakness. You will gradually grow stronger. Become more stronger.</p>
+      <p>Until one day, the people who once laughed at you disappear from your sight.</p>
+      <p>Until one day, your power. You can defeat everything.</p>
     </div>
   </div>
-</div>
-<div class="story-section">
-  <button class="about-toggle" onclick="toggleAbout()">About</button>
-  <div class="about-content" id="about-content">
-    <div class="about-text">
-      <p><b>CaveGame</b> is a 3D voxel survival game built with Three.js.</p>
-      <p>Mine blocks, craft tools, manage your oxygen, and survive the dangers lurking in the dark caves.</p>
-      <p><b>Controls:</b> WASD to move, Space to jump, Left Click to mine, Right Click to place, Scroll/1-9 to select items, I for crafting grid.</p>
-      <p>What is under fear?</p>
-    </div>
-  </div>
-</div>
-<script>
-function toggleStory() {
-  const content = document.getElementById('story-content');
-  const toggle = document.querySelector('.story-toggle');
-  content.classList.toggle('open');
-  toggle.classList.toggle('active');
-}
-function toggleAbout() {
-  const content = document.getElementById('about-content');
-  const toggle = document.querySelector('.about-toggle');
-  content.classList.toggle('open');
-  toggle.classList.toggle('active');
-}
-</script>
+
+  <script>
+    function toggleStory() {
+      const content = document.getElementById('story-content');
+      const toggle = document.querySelector('.story-toggle');
+      content.classList.toggle('open');
+      toggle.classList.toggle('active');
+    }
+    function toggleAbout() {
+      const content = document.getElementById('about-content');
+      const toggle = document.querySelector('.about-toggle');
+      content.classList.toggle('open');
+      toggle.classList.toggle('active');
+    }
+    function toggleCopyright() {
+      const content = document.getElementById('copyright-content');
+      const toggle = document.querySelector('.copyright-toggle');
+      content.classList.toggle('open');
+      toggle.classList.toggle('active');
+    }
+    const secretBtn = document.getElementById('secretBtn');
+    const secretText = document.getElementById('secretText');
+    let holdTimer = null;
+    let isHolding = false;
+    secretBtn.addEventListener('mousedown', () => {
+      isHolding = true;
+      holdTimer = setTimeout(() => {
+        if (isHolding) secretText.classList.toggle('show');
+      }, 600);
+    });
+    secretBtn.addEventListener('mouseup', () => {
+      isHolding = false;
+      clearTimeout(holdTimer);
+    });
+    secretBtn.addEventListener('mouseleave', () => {
+      isHolding = false;
+      clearTimeout(holdTimer);
+    });
+    secretBtn.addEventListener('dblclick', () => {
+      secretText.classList.toggle('show');
+    });
+  </script>
+
 </body>
+
 </html>
