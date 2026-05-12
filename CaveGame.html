@@ -265,7 +265,7 @@ canvas { display: block; }
 <div id="mining-label"></div>
 <div id="vignette"></div>
 <div id="death-screen">
-  <div id="death-title">YOU DIED</div>
+  <div id="death-title">VANISH IN YOUR DREAM</div>
   <button id="refresh-btn" onclick="location.reload()">REFRESH</button>
 </div>
 <div id="stats">FPS: 0<br>X: 0 Y: 0 Z: 0</div>
@@ -459,18 +459,23 @@ canvas { display: block; }
   };
   window._renderHotbar();
   
+  var _sbRefs = null;
   window._updateStatusBars = function(health, maxHealth, oxygen, maxOxygen) {
-    var healthBar = document.getElementById('health-bar');
-    var oxygenBar = document.getElementById('oxygen-bar');
-    if (healthBar) {
-      var healthPercent = (health / maxHealth) * 100;
-      healthBar.querySelector('.bar-fill').style.width = healthPercent + '%';
-      healthBar.querySelector('.bar-label').textContent = 'Health: ' + Math.round(health) + '/' + maxHealth;
+    if (!_sbRefs) {
+      _sbRefs = {
+        hFill: document.querySelector('#health-bar .bar-fill'),
+        hLabel: document.querySelector('#health-bar .bar-label'),
+        oFill: document.querySelector('#oxygen-bar .bar-fill'),
+        oLabel: document.querySelector('#oxygen-bar .bar-label')
+      };
     }
-    if (oxygenBar) {
-      var oxygenPercent = (oxygen / maxOxygen) * 100;
-      oxygenBar.querySelector('.bar-fill').style.width = oxygenPercent + '%';
-      oxygenBar.querySelector('.bar-label').textContent = 'Oxygen: ' + Math.round(oxygen) + '/' + maxOxygen;
+    if (_sbRefs.hFill) {
+      _sbRefs.hFill.style.width = ((health / maxHealth) * 100) + '%';
+      _sbRefs.hLabel.textContent = 'Health: ' + Math.round(health) + '/' + maxHealth;
+    }
+    if (_sbRefs.oFill) {
+      _sbRefs.oFill.style.width = ((oxygen / maxOxygen) * 100) + '%';
+      _sbRefs.oLabel.textContent = 'Oxygen: ' + Math.round(oxygen) + '/' + maxOxygen;
     }
   };
   
@@ -815,6 +820,28 @@ const HOTBAR_SIZE = 9;
 const hotbar = window._hotbarData;
 let selectedSlot = window._selectedSlot.value;
 
+const _moveDir = new THREE.Vector3();
+const _UP = new THREE.Vector3(0, 1, 0);
+const _screenCenter = new THREE.Vector2(0, 0);
+const _tmpColor1 = new THREE.Color();
+const _tmpColor2 = new THREE.Color(0xffa040);
+const _hslTmp1 = { h: 0, s: 0, l: 0 };
+const _hslTmp2 = { h: 0, s: 0, l: 0 };
+const _gradientCache = new Map();
+const _playerAABB = { minX: 0, maxX: 0, minY: 0, maxY: 0, minZ: 0, maxZ: 0 };
+const _blockAABB = { minX: 0, maxX: 0, minY: 0, maxY: 0, minZ: 0, maxZ: 0 };
+const _monsterMeshBuf = [];
+let _miningFillEl = null;
+let _miningLabelEl = null;
+let _miningBarEl = null;
+let _spaceSizeCache = 10;
+let _spaceSizeTimer = 0;
+const SPACE_SIZE_INTERVAL = 0.25;
+let _lastHealthUI = -1;
+let _lastOxygenUI = -1;
+let _lastVignetteOpacity = -1;
+let _lastSelectedItem = null;
+
 // Initialize hotbar - already done by inline script
 function initHotbar() {
   renderHotbar();
@@ -987,7 +1014,10 @@ function renderHotbar() {
 
 
 function posToKey(x, y, z) {
-  return `${x},${y},${z}`;
+  return ((x + 256) << 18) | ((y + 256) << 9) | (z + 256);
+}
+function keyToPos(key) {
+  return [(key >>> 18) - 256, ((key >>> 9) & 0x1FF) - 256, (key & 0x1FF) - 256];
 }
 
 function hasBlock(x, y, z) {
@@ -1026,8 +1056,9 @@ scene.background = new THREE.Color(0x87ceeb);
 scene.fog = new THREE.Fog(0x87ceeb, 80, 200);
 
 const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 200);
-const renderer = new THREE.WebGLRenderer({ antialias: true });
+const renderer = new THREE.WebGLRenderer({ antialias: false, powerPreference: 'high-performance' });
 renderer.setSize(innerWidth, innerHeight);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
 document.body.appendChild(renderer.domElement);
 
@@ -1107,8 +1138,18 @@ function gradientLookup(stops, time) {
   const n = stops.length;
   if (time <= stops[0].t) return stops[0].v;
   if (time >= stops[n - 1].t) return stops[n - 1].v;
+  let cached = _gradientCache.get(stops);
+  if (cached !== undefined && time >= stops[cached].t && time <= stops[cached + 1].t) {
+    const localT = (time - stops[cached].t) / (stops[cached + 1].t - stops[cached].t);
+    const smooth = localT * localT * (3 - 2 * localT);
+    if (stops[cached].v instanceof THREE.Color) {
+      return lerpColorHSL(stops[cached].v, stops[cached + 1].v, smooth);
+    }
+    return stops[cached].v + (stops[cached + 1].v - stops[cached].v) * smooth;
+  }
   for (let i = 0; i < n - 1; i++) {
     if (time >= stops[i].t && time <= stops[i + 1].t) {
+      _gradientCache.set(stops, i);
       const localT = (time - stops[i].t) / (stops[i + 1].t - stops[i].t);
       const smooth = localT * localT * (3 - 2 * localT);
       if (stops[i].v instanceof THREE.Color) {
@@ -1122,18 +1163,16 @@ function gradientLookup(stops, time) {
 
 // HSL color interpolation (shortest hue path)
 function lerpColorHSL(c1, c2, t) {
-  const hsl1 = { h: 0, s: 0, l: 0 };
-  const hsl2 = { h: 0, s: 0, l: 0 };
-  c1.getHSL(hsl1);
-  c2.getHSL(hsl2);
-  let dh = hsl2.h - hsl1.h;
+  c1.getHSL(_hslTmp1);
+  c2.getHSL(_hslTmp2);
+  let dh = _hslTmp2.h - _hslTmp1.h;
   if (dh > 0.5) dh -= 1;
   if (dh < -0.5) dh += 1;
-  let h = hsl1.h + dh * t;
+  let h = _hslTmp1.h + dh * t;
   if (h < 0) h += 1;
   if (h > 1) h -= 1;
-  const s = hsl1.s + (hsl2.s - hsl1.s) * t;
-  const l = hsl1.l + (hsl2.l - hsl1.l) * t;
+  const s = _hslTmp1.s + (_hslTmp2.s - _hslTmp1.s) * t;
+  const l = _hslTmp1.l + (_hslTmp2.l - _hslTmp1.l) * t;
   return new THREE.Color().setHSL(h, s, l);
 }
 
@@ -1173,7 +1212,8 @@ function updateDayNightCycle(delta) {
   const sunAlt = Math.sin(sunAngle);
   if (sunAlt < 0.2 && sunAlt > -0.1) {
     const warmth = 1 - (sunAlt + 0.1) / 0.3;
-    dirLight.color.copy(new THREE.Color(0xffffff)).lerp(new THREE.Color(0xffa040), warmth);
+    _tmpColor1.setHex(0xffffff);
+    dirLight.color.copy(_tmpColor1).lerp(_tmpColor2, warmth);
   } else {
     dirLight.color.setHex(0xffffff);
   }
@@ -1277,7 +1317,6 @@ for (let x = -halfGroundSize; x < halfGroundSize; x++) {
 // Helper function to add instance
 function addInstance(x, y, z) {
   if (instanceCount >= maxInstances) {
-    console.warn('Maximum instances reached');
     return;
   }
   const key = posToKey(x, y, z);
@@ -1970,12 +2009,10 @@ function update(dt) {
     } else {
       miningProgress += dt;
       const pct = Math.min(100, (miningProgress / miningTime) * 100);
-      const miningFill = document.querySelector('#mining-bar .mining-fill');
-      const miningLabel = document.getElementById('mining-label');
-      if (miningFill) miningFill.style.width = pct + '%';
-      if (miningLabel) {
+      if (_miningFillEl) _miningFillEl.style.width = pct + '%';
+      if (_miningLabelEl) {
         const cfg = BLOCK_TYPES[miningTarget.blockType];
-        miningLabel.textContent = (cfg ? cfg.name : 'Block') + ' ' + Math.round(pct) + '%';
+        _miningLabelEl.textContent = (cfg ? cfg.name : 'Block') + ' ' + Math.round(pct) + '%';
       }
       
       if (miningProgress >= miningTime) {
@@ -1985,16 +2022,16 @@ function update(dt) {
     }
   }
   
-  const dir = new THREE.Vector3();
-  if (keys['KeyW']) dir.z -= 1;
-  if (keys['KeyS']) dir.z += 1;
-  if (keys['KeyA']) dir.x -= 1;
-  if (keys['KeyD']) dir.x += 1;
+  _moveDir.set(0, 0, 0);
+  if (keys['KeyW']) _moveDir.z -= 1;
+  if (keys['KeyS']) _moveDir.z += 1;
+  if (keys['KeyA']) _moveDir.x -= 1;
+  if (keys['KeyD']) _moveDir.x += 1;
   
-  if (dir.length() > 0) {
-    dir.normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
-    const moveX = dir.x * MOVE_SPEED * dt;
-    const moveZ = dir.z * MOVE_SPEED * dt;
+  if (_moveDir.length() > 0) {
+    _moveDir.normalize().applyAxisAngle(_UP, player.rotation.y);
+    const moveX = _moveDir.x * MOVE_SPEED * dt;
+    const moveZ = _moveDir.z * MOVE_SPEED * dt;
     
     // Try moving in X direction
     const oldX = player.position.x;
@@ -2012,7 +2049,12 @@ function update(dt) {
   }
   
   // Update oxygen
-  currentSpaceSize = getSpaceSize(player.position);
+  _spaceSizeTimer += dt;
+  if (_spaceSizeTimer >= SPACE_SIZE_INTERVAL) {
+    _spaceSizeTimer -= SPACE_SIZE_INTERVAL;
+    _spaceSizeCache = getSpaceSize(player.position);
+  }
+  currentSpaceSize = _spaceSizeCache;
   let oxygenRate = (currentSpaceSize - idealSpaceSize) * 0.1; // Linear relationship
   
   // Apply health bonus to consumption rate
@@ -2156,21 +2198,24 @@ function respawnPlayer() {
   document.getElementById('status-bars').style.display = 'none';
   document.getElementById('stats').style.display = 'none';
   document.getElementById('crosshair').style.display = 'none';
-  document.getElementById('mining-bar').style.display = 'none';
-  document.getElementById('mining-label').style.display = 'none';
+  if (!_miningBarEl) {
+    _miningBarEl = document.getElementById('mining-bar');
+    _miningLabelEl = document.getElementById('mining-label');
+  }
+  if (_miningBarEl) _miningBarEl.style.display = 'none';
+  if (_miningLabelEl) _miningLabelEl.style.display = 'none';
   
   // Exit pointer lock
   document.exitPointerLock();
 }
 
 const raycaster = new THREE.Raycaster();
-const frustum = new THREE.Frustum();
-const projScreenMatrix = new THREE.Matrix4();
+const _hitVirtualObj = { position: new THREE.Vector3(), isInstanced: true, block: { x: 0, y: 0, z: 0 } };
 
-const INTERACT_RANGE = 3;
+const INTERACT_RANGE = 5;
 
 function getBlockIntersects() {
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  raycaster.setFromCamera(_screenCenter, camera);
   const hits = raycaster.intersectObjects(scene.children, false);
   
   const result = [];
@@ -2179,26 +2224,23 @@ function getBlockIntersects() {
     if (hit.object === ground) continue;
     
     if (hit.object === stoneInstancedMesh) {
-      // Instanced block hit
       const instanceId = hit.instanceId;
       const key = instanceIdToKey.get(instanceId);
       if (!key) continue;
       
-      const [x, y, z] = key.split(',').map(Number);
-      const virtualObject = {
-        position: new THREE.Vector3(x + 0.5, y + 0.5, z + 0.5),
-        isInstanced: true,
-        block: { x, y, z }
-      };
+      const [x, y, z] = keyToPos(key);
+      _hitVirtualObj.position.set(x + 0.5, y + 0.5, z + 0.5);
+      _hitVirtualObj.block.x = x;
+      _hitVirtualObj.block.y = y;
+      _hitVirtualObj.block.z = z;
       
       result.push({
-        object: virtualObject,
+        object: _hitVirtualObj,
         face: hit.face,
         point: hit.point,
         distance: hit.distance
       });
     } else {
-      // Regular mesh hit
       result.push(hit);
     }
   }
@@ -2207,16 +2249,19 @@ function getBlockIntersects() {
 }
 
 function getGroundIntersect() {
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  raycaster.setFromCamera(_screenCenter, camera);
   const hits = raycaster.intersectObject(ground);
   return hits.length > 0 ? hits[0] : null;
 }
 
 function getMonsterIntersect() {
   if (monsters.length === 0) return null;
-  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
-  const meshes = monsters.map(m => m.mesh);
-  const hits = raycaster.intersectObjects(meshes, false);
+  raycaster.setFromCamera(_screenCenter, camera);
+  _monsterMeshBuf.length = 0;
+  for (let i = 0; i < monsters.length; i++) {
+    _monsterMeshBuf.push(monsters[i].mesh);
+  }
+  const hits = raycaster.intersectObjects(_monsterMeshBuf, false);
   if (hits.length > 0 && hits[0].distance <= INTERACT_RANGE) {
     const hitMesh = hits[0].object;
     return monsters.find(m => m.mesh === hitMesh) || null;
@@ -2272,25 +2317,23 @@ function placeBlock(pos) {
 function getPlayerAABB(pos) {
   const halfWidth = PLAYER_WIDTH / 2;
   const halfDepth = PLAYER_DEPTH / 2;
-  return {
-    minX: pos.x - halfWidth,
-    maxX: pos.x + halfWidth,
-    minY: pos.y,
-    maxY: pos.y + PLAYER_HEIGHT_COLLISION,
-    minZ: pos.z - halfDepth,
-    maxZ: pos.z + halfDepth
-  };
+  _playerAABB.minX = pos.x - halfWidth;
+  _playerAABB.maxX = pos.x + halfWidth;
+  _playerAABB.minY = pos.y;
+  _playerAABB.maxY = pos.y + PLAYER_HEIGHT_COLLISION;
+  _playerAABB.minZ = pos.z - halfDepth;
+  _playerAABB.maxZ = pos.z + halfDepth;
+  return _playerAABB;
 }
 
 function getBlockAABB(x, y, z) {
-  return {
-    minX: x,
-    maxX: x + 1,
-    minY: y,
-    maxY: y + 1,
-    minZ: z,
-    maxZ: z + 1
-  };
+  _blockAABB.minX = x;
+  _blockAABB.maxX = x + 1;
+  _blockAABB.minY = y;
+  _blockAABB.maxY = y + 1;
+  _blockAABB.minZ = z;
+  _blockAABB.maxZ = z + 1;
+  return _blockAABB;
 }
 
 function aabbIntersect(a, b) {
@@ -2468,10 +2511,13 @@ function startMining() {
   miningProgress = 0;
   miningTime = getMiningTime(blockType);
   
-  const miningBar = document.getElementById('mining-bar');
-  const miningLabel = document.getElementById('mining-label');
-  if (miningBar) miningBar.style.display = 'block';
-  if (miningLabel) miningLabel.style.display = 'block';
+  if (!_miningBarEl) {
+    _miningBarEl = document.getElementById('mining-bar');
+    _miningFillEl = document.querySelector('#mining-bar .mining-fill');
+    _miningLabelEl = document.getElementById('mining-label');
+  }
+  if (_miningBarEl) _miningBarEl.style.display = 'block';
+  if (_miningLabelEl) _miningLabelEl.style.display = 'block';
 }
 
 function stopMining() {
@@ -2479,13 +2525,11 @@ function stopMining() {
   miningTarget = null;
   miningProgress = 0;
   
-  const miningBar = document.getElementById('mining-bar');
-  const miningLabel = document.getElementById('mining-label');
-  if (miningBar) {
-    miningBar.style.display = 'none';
-    miningBar.querySelector('.mining-fill').style.width = '0%';
+  if (_miningBarEl) {
+    _miningBarEl.style.display = 'none';
+    if (_miningFillEl) _miningFillEl.style.width = '0%';
   }
-  if (miningLabel) miningLabel.style.display = 'none';
+  if (_miningLabelEl) _miningLabelEl.style.display = 'none';
 }
 
 document.addEventListener('mousedown', e => {
@@ -2539,10 +2583,6 @@ const statsElement = document.getElementById('stats');
 const vignetteElement = document.getElementById('vignette');
 let fpsFrames = 0;
 let fpsTime = 0;
-let fpsDisplay = 'FPS: 0';
-const tempBox3 = new THREE.Box3();
-const tempMin = new THREE.Vector3();
-const tempMax = new THREE.Vector3();
 
 function animate() {
   requestAnimationFrame(animate);
@@ -2579,57 +2619,39 @@ function animate() {
     instanceMatrixDirty = false;
   }
   
-  // Update frustum for culling (temporarily disabled for debugging)
-  // projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
-  // frustum.setFromProjectionMatrix(projScreenMatrix);
-  
-  // Cull blocks outside frustum with margin (temporarily disabled)
-  // const margin = 0.2;
-  // for (const [key, mesh] of sceneBlocks) {
-  //   const [x, y, z] = key.split(',').map(Number);
-  //   tempMin.set(x - margin, y - margin, z - margin);
-  //   tempMax.set(x + 1 + margin, y + 1 + margin, z + 1 + margin);
-  //   tempBox3.set(tempMin, tempMax);
-  //   mesh.visible = frustum.intersectsBox(tempBox3);
-  // }
-  
-  // Ensure all blocks are visible (for debugging)
-  for (const [key, value] of sceneBlocks) {
-    if (value.type === 'instanced') {
-      // For instanced blocks, ensure matrix is set (already handled)
-    } else {
-      // For independent meshes, set visible
-      value.visible = true;
-    }
-  }
-  
-  // Update stats
+  // Update stats and UI at 1Hz
   fpsFrames++;
   fpsTime += delta;
   if (fpsTime >= 1.0) {
     const fps = Math.round(fpsFrames / fpsTime);
-    fpsDisplay = `FPS: ${fps}`;
     fpsFrames = 0;
     fpsTime = 0;
+    
+    const pos = player.position;
+    const sel = hotbar[selectedSlot];
+    const selName = sel ? BLOCK_TYPES[sel.type].name : 'Empty';
+    const selCount = sel ? sel.count : 0;
+    const timePct = Math.round(dayNightSystem.time * 100);
+    statsElement.innerHTML = `FPS: ${fps}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Selected: ${selName} (${selCount})<br>Time: ${timePct}%`;
   }
   
-  const pos = player.position;
-  const selectedItem = hotbar[selectedSlot];
-  const selectedName = selectedItem ? BLOCK_TYPES[selectedItem.type].name : 'Empty';
-  const selectedCount = selectedItem ? selectedItem.count : 0;
-  const timePercent = Math.round(dayNightSystem.time * 100);
-  
-  statsElement.innerHTML = `${fpsDisplay}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Selected: ${selectedName} (${selectedCount})<br>Time: ${timePercent}%`;
-  
-  // Update status bars
-  if (window._updateStatusBars) {
-    window._updateStatusBars(health, maxHealth, oxygen, maxOxygen);
+  // Update status bars only when values change
+  const hRound = Math.round(health);
+  const oRound = Math.round(oxygen);
+  if (hRound !== _lastHealthUI || oRound !== _lastOxygenUI) {
+    _lastHealthUI = hRound;
+    _lastOxygenUI = oRound;
+    if (window._updateStatusBars) {
+      window._updateStatusBars(health, maxHealth, oxygen, maxOxygen);
+    }
   }
   
-  // Update vignette effect based on health
-  const healthPercent = health / maxHealth;
-  const vignetteOpacity = Math.max(0, (1 - healthPercent) * 1.2); // More intense at low health
-  vignetteElement.style.opacity = vignetteOpacity;
+  // Update vignette only when opacity changes
+  const vigOp = Math.max(0, (1 - health / maxHealth) * 1.2);
+  if (Math.abs(vigOp - _lastVignetteOpacity) > 0.01) {
+    _lastVignetteOpacity = vigOp;
+    vignetteElement.style.opacity = vigOp;
+  }
   
   renderer.render(scene, camera);
 }
