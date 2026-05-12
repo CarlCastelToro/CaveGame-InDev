@@ -27,11 +27,19 @@ canvas { display: block; }
   background: rgba(0,0,0,0.5); padding: 5px 10px; border-radius: 3px;
   pointer-events: none; z-index: 100;
 }
+#vignette {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  pointer-events: none; z-index: 50;
+  background: radial-gradient(ellipse at center, transparent 50%, rgba(255,0,0,0.8) 100%);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
 </style>
 </head>
 <body>
 <div id="blocker"><span>Click to Play</span></div>
 <div id="crosshair"></div>
+<div id="vignette"></div>
 <div id="stats">FPS: 0<br>X: 0 Y: 0 Z: 0</div>
 <script type="importmap">
 { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
@@ -546,7 +554,7 @@ let spawnPosition = player.position.clone(); // Store spawn position for respawn
 let oxygen = 100;
 let maxOxygen = 100;
 const idealSpaceSize = 10; // Linear midpoint for space size
-const oxygenDamageTimer = 10; // Seconds between damage when oxygen is 0
+const oxygenDamageTimer = 5; // Seconds between damage when oxygen is 0 (doubled speed)
 let oxygenDamageCounter = 0;
 
 let velocityY = 0;
@@ -1004,6 +1012,7 @@ document.addEventListener('contextmenu', e => e.preventDefault());
 
 const clock = new THREE.Clock();
 const statsElement = document.getElementById('stats');
+const vignetteElement = document.getElementById('vignette');
 let fpsFrames = 0;
 let fpsTime = 0;
 let fpsDisplay = 'FPS: 0';
@@ -1052,6 +1061,11 @@ function animate() {
   
   const pos = player.position;
   statsElement.innerHTML = `${fpsDisplay}<br>X: ${pos.x.toFixed(1)} Y: ${pos.y.toFixed(1)} Z: ${pos.z.toFixed(1)}<br>Health: ${health}/${maxHealth}<br>Oxygen: ${Math.round(oxygen)}/${maxOxygen}`;
+  
+  // Update vignette effect based on health
+  const healthPercent = health / maxHealth;
+  const vignetteOpacity = Math.max(0, (1 - healthPercent) * 1.2); // More intense at low health
+  vignetteElement.style.opacity = vignetteOpacity;
   
   renderer.render(scene, camera);
 }
