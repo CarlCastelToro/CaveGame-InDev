@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>CaveGame</title>
+<style>
+* { margin: 0; padding: 0; }
+body { overflow: hidden; background: #000; }
+canvas { display: block; }
+#blocker {
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+  background: rgba(0,0,0,0.7); display: flex; align-items: center;
+  justify-content: center; cursor: pointer; z-index: 10;
+}
+#blocker span { color: #fff; font: 24px sans-serif; }
+#crosshair {
+  position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 20px; height: 20px; pointer-events: none; z-index: 5;
+}
+#crosshair::before, #crosshair::after {
+  content: ''; position: absolute; background: #fff;
+}
+#crosshair::before { width: 2px; height: 100%; left: 50%; transform: translateX(-50%); }
+#crosshair::after { height: 2px; width: 100%; top: 50%; transform: translateY(-50%); }
+</style>
+</head>
+<body>
+<div id="blocker"><span>Click to Play</span></div>
+<div id="crosshair"></div>
+<script type="importmap">
+{ "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js" } }
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+const GRAVITY = -25;
+const JUMP_SPEED = 10;
+const MOVE_SPEED = 8;
+const PLAYER_HEIGHT = 1.6;
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+scene.fog = new THREE.Fog(0x87ceeb, 40, 100);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.1, 200);
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = true;
+document.body.appendChild(renderer.domElement);
+
+const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+scene.add(ambient);
+const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+dirLight.position.set(30, 50, 30);
+dirLight.castShadow = true;
+dirLight.shadow.camera.left = -40;
+dirLight.shadow.camera.right = 40;
+dirLight.shadow.camera.top = 40;
+dirLight.shadow.camera.bottom = -40;
+dirLight.shadow.mapSize.set(2048, 2048);
+scene.add(dirLight);
+
+const grassCanvas = document.createElement('canvas');
+grassCanvas.width = grassCanvas.height = 16;
+const gCtx = grassCanvas.getContext('2d');
+for (let x = 0; x < 16; x++) {
+  for (let y = 0; y < 16; y++) {
+    const v = 100 + Math.random() * 40;
+    gCtx.fillStyle = `rgb(${v*0.4},${v},${v*0.2})`;
+    gCtx.fillRect(x, y, 1, 1);
+  }
+}
+const grassTex = new THREE.CanvasTexture(grassCanvas);
+grassTex.magFilter = THREE.NearestFilter;
+grassTex.wrapS = grassTex.wrapT = THREE.RepeatWrapping;
+grassTex.repeat.set(40, 40);
+
+const groundGeo = new THREE.BoxGeometry(80, 1, 80);
+const groundMat = new THREE.MeshStandardMaterial({ map: grassTex });
+const ground = new THREE.Mesh(groundGeo, groundMat);
+ground.position.y = -0.5;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const pitch = new THREE.Object3D();
+pitch.position.y = PLAYER_HEIGHT;
+pitch.rotation.order = 'YXZ';
+
+const player = new THREE.Group();
+player.add(pitch);
+pitch.add(camera);
+scene.add(player);
+
+let velocityY = 0;
+let onGround = false;
+const keys = {};
+document.addEventListener('keydown', e => keys[e.code] = true);
+document.addEventListener('keyup',   e => keys[e.code] = false);
+
+const blocker = document.getElementById('blocker');
+let locked = false;
+blocker.addEventListener('click', () => {
+  renderer.domElement.requestPointerLock();
+});
+document.addEventListener('pointerlockchange', () => {
+  locked = !!document.pointerLockElement;
+  blocker.style.display = locked ? 'none' : 'flex';
+});
+document.addEventListener('mousemove', e => {
+  if (!locked) return;
+  player.rotation.y -= e.movementX * 0.002;
+  pitch.rotation.x -= e.movementY * 0.002;
+  pitch.rotation.x = Math.max(-Math.PI/2, Math.min(Math.PI/2, pitch.rotation.x));
+});
+
+function update(dt) {
+  const dir = new THREE.Vector3();
+  if (keys['KeyW']) dir.z -= 1;
+  if (keys['KeyS']) dir.z += 1;
+  if (keys['KeyA']) dir.x -= 1;
+  if (keys['KeyD']) dir.x += 1;
+  if (dir.length() > 0) {
+    dir.normalize().applyAxisAngle(new THREE.Vector3(0, 1, 0), player.rotation.y);
+    player.position.addScaledVector(dir, MOVE_SPEED * dt);
+  }
+
+  if (keys['Space'] && onGround) {
+    velocityY = JUMP_SPEED;
+    onGround = false;
+  }
+
+  velocityY += GRAVITY * dt;
+  player.position.y += velocityY * dt;
+
+  if (player.position.y <= PLAYER_HEIGHT) {
+    player.position.y = PLAYER_HEIGHT;
+    velocityY = 0;
+    onGround = true;
+  }
+}
+
+const raycaster = new THREE.Raycaster();
+const blockGeo = new THREE.BoxGeometry(1, 1, 1);
+const blockMat = new THREE.MeshStandardMaterial({ color: 0x8B4513 });
+
+function getBlockIntersects() {
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  return raycaster.intersectObjects(scene.children, false).filter(i => i.object !== ground);
+}
+
+function getGroundIntersect() {
+  raycaster.setFromCamera(new THREE.Vector2(0, 0), camera);
+  const hits = raycaster.intersectObject(ground);
+  return hits.length > 0 ? hits[0] : null;
+}
+
+function placeBlock(pos) {
+  const block = new THREE.Mesh(blockGeo, blockMat);
+  block.position.copy(pos);
+  block.castShadow = true;
+  block.receiveShadow = true;
+  scene.add(block);
+}
+
+document.addEventListener('mousedown', e => {
+  if (!locked) return;
+  const blockHits = getBlockIntersects();
+  if (blockHits.length > 0) {
+    const hit = blockHits[0];
+    if (e.button === 0) {
+      scene.remove(hit.object);
+    } else if (e.button === 2) {
+      const newPos = hit.object.position.clone().add(hit.face.normal);
+      placeBlock(newPos);
+    }
+  } else {
+    const groundHit = getGroundIntersect();
+    if (groundHit && e.button === 2) {
+      const pos = groundHit.point.clone().floor().addScalar(0.5);
+      pos.y = 0.5;
+      placeBlock(pos);
+    }
+  }
+});
+
+document.addEventListener('contextmenu', e => e.preventDefault());
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  update(Math.min(clock.getDelta(), 0.05));
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+</script>
+</body>
+</html>
