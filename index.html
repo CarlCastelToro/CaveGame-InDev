@@ -200,11 +200,40 @@ canvas { display: block; }
   font: 12px sans-serif;
   margin-top: 10px;
 }
+
+/* Mining progress bar */
+#mining-bar {
+  position: fixed; top: 55%; left: 50%; transform: translate(-50%, 0);
+  width: 200px; height: 10px;
+  background: rgba(0,0,0,0.6);
+  border: 1px solid #555;
+  border-radius: 3px;
+  z-index: 100;
+  pointer-events: none;
+  display: none;
+  overflow: hidden;
+}
+#mining-bar .mining-fill {
+  height: 100%;
+  background: linear-gradient(to bottom, #eee, #aaa);
+  width: 0%;
+  transition: none;
+}
+#mining-label {
+  position: fixed; top: calc(55% + 14px); left: 50%; transform: translate(-50%, 0);
+  color: #fff; font: 11px sans-serif;
+  text-shadow: 1px 1px 2px #000;
+  z-index: 100;
+  pointer-events: none;
+  display: none;
+}
 </style>
 </head>
 <body>
 <div id="blocker"><span>Click to Play</span></div>
 <div id="crosshair"></div>
+<div id="mining-bar"><div class="mining-fill"></div></div>
+<div id="mining-label"></div>
 <div id="vignette"></div>
 <div id="stats">FPS: 0<br>X: 0 Y: 0 Z: 0</div>
 <div id="status-bars">
@@ -227,7 +256,7 @@ canvas { display: block; }
       <div id="crafting-result"></div>
     </div>
     <div id="crafting-inventory"></div>
-    <div id="crafting-help">Press I to close | Click grid to return item | Click result to craft</div>
+    <div id="crafting-help">Press I to close | Click grid to return item | Click result to craft (5 O2)</div>
   </div>
 </div>
 <script>
@@ -242,8 +271,8 @@ canvas { display: block; }
     brick: { name: 'Brick', color: '#B22222' },
     snow: { name: 'Snow', color: '#FFFAFA' },
     obsidian: { name: 'Obsidian', color: '#1A1A2E' },
-    stick: { name: 'Stick', color: '#A0522D', icon: 'stick' },
-    stone_pickaxe: { name: 'Stone Pickaxe', color: '#808080', icon: 'pickaxe' }
+    stick: { name: 'Stick', color: '#A0522D', icon: 'stick', placeable: false },
+    stone_pickaxe: { name: 'Stone Pickaxe', color: '#808080', icon: 'pickaxe', placeable: false, maxDurability: 64 }
   };
   
   // Crafting recipes
@@ -259,12 +288,9 @@ canvas { display: block; }
   ];
   
   var hotbarData = [
-    { type: 'stone', count: 32 },
-    { type: 'dirt', count: 32 },
-    { type: 'cobblestone', count: 16 },
-    { type: 'wood', count: 16 },
-    { type: 'sand', count: 16 },
-    null, null, null, null
+    { type: 'stone_pickaxe', count: 1, durability: 64 },
+    { type: 'wood', count: Math.floor(Math.random() * 11) + 1 },
+    null, null, null, null, null, null, null
   ];
   var selectedSlot = 0;
   var craftingGrid = [null, null, null, null, null, null, null, null, null];
@@ -359,6 +385,15 @@ canvas { display: block; }
           cnt.className = 'slot-count';
           cnt.textContent = hotbarData[i].count;
           slot.appendChild(cnt);
+        }
+        if (hotbarData[i].durability !== undefined && cfg.maxDurability) {
+          var durBar = document.createElement('div');
+          durBar.style.cssText = 'position:absolute;bottom:2px;left:4px;right:4px;height:3px;background:#333;border-radius:1px;';
+          var durFill = document.createElement('div');
+          var durPct = (hotbarData[i].durability / cfg.maxDurability) * 100;
+          durFill.style.cssText = 'height:100%;width:' + durPct + '%;background:' + (durPct > 30 ? '#4a4' : durPct > 10 ? '#aa4' : '#a44') + ';border-radius:1px;';
+          durBar.appendChild(durFill);
+          slot.appendChild(durBar);
         }
         var name = document.createElement('span');
         name.className = 'slot-name';
@@ -494,6 +529,15 @@ canvas { display: block; }
             cnt.textContent = hotbarData[i].count;
             slot.appendChild(cnt);
           }
+          if (hotbarData[i].durability !== undefined && cfg.maxDurability) {
+            var durBar = document.createElement('div');
+            durBar.style.cssText = 'position:absolute;bottom:2px;left:4px;right:4px;height:3px;background:#333;border-radius:1px;';
+            var durFill = document.createElement('div');
+            var durPct = (hotbarData[i].durability / cfg.maxDurability) * 100;
+            durFill.style.cssText = 'height:100%;width:' + durPct + '%;background:' + (durPct > 30 ? '#4a4' : durPct > 10 ? '#aa4' : '#a44') + ';border-radius:1px;';
+            durBar.appendChild(durFill);
+            slot.appendChild(durBar);
+          }
         }
         slot.addEventListener('click', function() {
           window._hotbarSlotClick(parseInt(this.dataset.index));
@@ -514,7 +558,14 @@ canvas { display: block; }
   
   window._craftingResultClick = function() {
     if (!craftingResult) return;
-    window._addToHotbar(craftingResult.type, craftingResult.count);
+    if (window._oxygen.value < 5) return;
+    window._oxygen.value -= 5;
+    var newItem = { type: craftingResult.type, count: craftingResult.count };
+    var cfg = BLOCK_TYPES[craftingResult.type];
+    if (cfg && cfg.maxDurability) {
+      newItem.durability = cfg.maxDurability;
+    }
+    window._addToHotbar(newItem.type, newItem.count, newItem.durability);
     for (var i = 0; i < 9; i++) {
       if (craftingGrid[i]) {
         craftingGrid[i].count--;
@@ -529,9 +580,9 @@ canvas { display: block; }
     window._renderHotbar();
   };
   
-  window._addToHotbar = function(type, count) {
+  window._addToHotbar = function(type, count, durability) {
     for (var i = 0; i < 9; i++) {
-      if (hotbarData[i] && hotbarData[i].type === type) {
+      if (hotbarData[i] && hotbarData[i].type === type && durability === undefined) {
         hotbarData[i].count += count;
         window._renderHotbar();
         return true;
@@ -539,7 +590,9 @@ canvas { display: block; }
     }
     for (var i = 0; i < 9; i++) {
       if (!hotbarData[i]) {
-        hotbarData[i] = { type: type, count: count };
+        var item = { type: type, count: count };
+        if (durability !== undefined) item.durability = durability;
+        hotbarData[i] = item;
         window._renderHotbar();
         return true;
       }
@@ -650,13 +703,16 @@ const BLOCK_TYPES = {
     id: 'stick',
     name: 'Stick',
     color: '#A0522D',
-    maxStack: 64
+    maxStack: 64,
+    placeable: false
   },
   stone_pickaxe: {
     id: 'stone_pickaxe',
     name: 'Stone Pickaxe',
     color: '#808080',
-    maxStack: 1
+    maxStack: 1,
+    placeable: false,
+    maxDurability: 64
   }
 };
 
@@ -1300,6 +1356,7 @@ let spawnPosition = player.position.clone(); // Store spawn position for respawn
 // Oxygen system
 let oxygen = 100;
 let maxOxygen = 100;
+window._oxygen = { get value() { return oxygen; }, set value(v) { oxygen = Math.max(0, Math.min(maxOxygen, v)); } };
 const idealSpaceSize = 10; // Linear midpoint for space size
 const oxygenDamageTimer = 5; // Seconds between damage when oxygen is 0 (doubled speed)
 let oxygenDamageCounter = 0;
@@ -1308,6 +1365,30 @@ let velocityY = 0;
 let onGround = false;
 const keys = {};
 let craftingOpen = false;
+
+// Mining system
+let mining = false;
+let miningTarget = null; // { x, y, z, key, blockType }
+let miningProgress = 0;
+let miningTime = 0;
+let mouseDown = false;
+let mouseButton = 0;
+
+// Get mining time for block type with current tool
+function getMiningTime(blockType) {
+  const selectedType = getSelectedBlockType();
+  if (selectedType === 'stone_pickaxe') {
+    if (blockType === 'stone' || blockType === 'cobblestone') return 0.7;
+    if (blockType === 'obsidian') return 5;
+    return 0.5;
+  }
+  // Default bare hand times
+  if (blockType === 'stone' || blockType === 'cobblestone') return 5;
+  if (blockType === 'obsidian') return 25;
+  if (blockType === 'wood') return 3;
+  if (blockType === 'dirt' || blockType === 'sand' || blockType === 'snow') return 0.75;
+  return 1.5;
+}
 document.addEventListener('keydown', e => {
   keys[e.code] = true;
   
@@ -1402,6 +1483,49 @@ function getSpaceSize(position) {
 }
 
 function update(dt) {
+  // Mining progress
+  if (mining && miningTarget && mouseDown) {
+    // Check if still looking at the same block
+    const blockHits = getBlockIntersects();
+    let stillLooking = false;
+    if (blockHits.length > 0) {
+      const hit = blockHits[0];
+      let hx, hy, hz;
+      if (hit.object.isInstanced) {
+        hx = hit.object.block.x;
+        hy = hit.object.block.y;
+        hz = hit.object.block.z;
+      } else {
+        const p = hit.object.position;
+        hx = Math.floor(p.x);
+        hy = Math.floor(p.y);
+        hz = Math.floor(p.z);
+      }
+      if (hx === miningTarget.x && hy === miningTarget.y && hz === miningTarget.z) {
+        stillLooking = true;
+      }
+    }
+    
+    if (!stillLooking) {
+      stopMining();
+    } else {
+      miningProgress += dt;
+      const pct = Math.min(100, (miningProgress / miningTime) * 100);
+      const miningFill = document.querySelector('#mining-bar .mining-fill');
+      const miningLabel = document.getElementById('mining-label');
+      if (miningFill) miningFill.style.width = pct + '%';
+      if (miningLabel) {
+        const cfg = BLOCK_TYPES[miningTarget.blockType];
+        miningLabel.textContent = (cfg ? cfg.name : 'Block') + ' ' + Math.round(pct) + '%';
+      }
+      
+      if (miningProgress >= miningTime) {
+        breakBlock(miningTarget.x, miningTarget.y, miningTarget.z, miningTarget.blockType);
+        stopMining();
+      }
+    }
+  }
+  
   const dir = new THREE.Vector3();
   if (keys['KeyW']) dir.z -= 1;
   if (keys['KeyS']) dir.z += 1;
@@ -1576,7 +1700,11 @@ function getGroundIntersect() {
 
 function placeBlock(pos) {
   const selectedType = getSelectedBlockType();
-  if (!selectedType) return; // No item selected
+  if (!selectedType) return;
+  
+  // Check if item is placeable
+  const cfg = BLOCK_TYPES[selectedType];
+  if (cfg && cfg.placeable === false) return;
   
   const x = Math.floor(pos.x);
   const y = Math.floor(pos.y);
@@ -1735,82 +1863,128 @@ function raycastBlocks(origin, direction, maxDistance = 10) {
   return null;
 }
 
+function breakBlock(bx, by, bz, blockType) {
+  const key = posToKey(bx, by, bz);
+  
+  // Deduct durability from tool
+  const toolItem = hotbar[selectedSlot];
+  if (toolItem && toolItem.durability !== undefined) {
+    toolItem.durability--;
+    if (toolItem.durability <= 0) {
+      hotbar[selectedSlot] = null;
+    }
+    renderHotbar();
+  }
+  
+  // Remove from collision registry
+  removeBlock(bx, by, bz);
+  
+  const sceneEntry = sceneBlocks.get(key);
+  if (sceneEntry) {
+    if (sceneEntry.type === 'instanced') {
+      removeInstance(key);
+    } else {
+      sceneBlocks.delete(key);
+      scene.remove(sceneEntry);
+    }
+  }
+  
+  // Add item to hotbar
+  addItemToHotbar(blockType, 1);
+  
+  // Update neighbor visibility
+  const directions = [
+    [1, 0, 0], [-1, 0, 0],
+    [0, 1, 0], [0, -1, 0],
+    [0, 0, 1], [0, 0, -1]
+  ];
+  for (const [dx, dy, dz] of directions) {
+    const nx = bx + dx;
+    const ny = by + dy;
+    const nz = bz + dz;
+    const nkey = posToKey(nx, ny, nz);
+    if (hasBlock(nx, ny, nz) && !sceneBlocks.has(nkey)) {
+      if (isBlockVisible(nx, ny, nz)) {
+        addInstance(nx, ny, nz);
+      }
+    }
+  }
+}
+
+function startMining() {
+  const blockHits = getBlockIntersects();
+  if (blockHits.length === 0) return;
+  const hit = blockHits[0];
+  
+  let bx, by, bz, blockType;
+  if (hit.object.isInstanced) {
+    bx = hit.object.block.x;
+    by = hit.object.block.y;
+    bz = hit.object.block.z;
+    blockType = 'stone';
+  } else {
+    const pos = hit.object.position;
+    bx = Math.floor(pos.x);
+    by = Math.floor(pos.y);
+    bz = Math.floor(pos.z);
+    blockType = hit.object.userData.blockType || 'stone';
+  }
+  
+  const key = posToKey(bx, by, bz);
+  mining = true;
+  miningTarget = { x: bx, y: by, z: bz, key, blockType };
+  miningProgress = 0;
+  miningTime = getMiningTime(blockType);
+  
+  const miningBar = document.getElementById('mining-bar');
+  const miningLabel = document.getElementById('mining-label');
+  if (miningBar) miningBar.style.display = 'block';
+  if (miningLabel) miningLabel.style.display = 'block';
+}
+
+function stopMining() {
+  mining = false;
+  miningTarget = null;
+  miningProgress = 0;
+  
+  const miningBar = document.getElementById('mining-bar');
+  const miningLabel = document.getElementById('mining-label');
+  if (miningBar) {
+    miningBar.style.display = 'none';
+    miningBar.querySelector('.mining-fill').style.width = '0%';
+  }
+  if (miningLabel) miningLabel.style.display = 'none';
+}
+
 document.addEventListener('mousedown', e => {
   if (!locked) return;
   if (craftingOpen) return;
-  const blockHits = getBlockIntersects();
-  if (blockHits.length > 0) {
-    const hit = blockHits[0];
-    if (e.button === 0) {
-      let bx, by, bz;
-      let blockType = 'stone'; // default
-      
-      if (hit.object.isInstanced) {
-        // Instanced block
-        bx = hit.object.block.x;
-        by = hit.object.block.y;
-        bz = hit.object.block.z;
-        const key = posToKey(bx, by, bz);
-        
-        // Remove from collision registry
-        removeBlock(bx, by, bz);
-        // Remove from instanced mesh
-        removeInstance(key);
-      } else {
-        // Regular mesh block
-        const pos = hit.object.position;
-        bx = Math.floor(pos.x);
-        by = Math.floor(pos.y);
-        bz = Math.floor(pos.z);
-        const key = posToKey(bx, by, bz);
-        
-        // Get block type from mesh userData
-        blockType = hit.object.userData.blockType || 'stone';
-        
-        // Remove from collision registry
-        removeBlock(bx, by, bz);
-        // Remove from scene registry
-        sceneBlocks.delete(key);
-        // Remove from scene
-        scene.remove(hit.object);
-      }
-      
-      // Add item to hotbar
-      addItemToHotbar(blockType, 1);
-      
-      // Update neighbor visibility
-      const directions = [
-        [1, 0, 0], [-1, 0, 0],
-        [0, 1, 0], [0, -1, 0],
-        [0, 0, 1], [0, 0, -1]
-      ];
-      
-      for (const [dx, dy, dz] of directions) {
-        const nx = bx + dx;
-        const ny = by + dy;
-        const nz = bz + dz;
-        const key = posToKey(nx, ny, nz);
-        
-        // If neighbor exists in collision registry but not in scene
-        if (hasBlock(nx, ny, nz) && !sceneBlocks.has(key)) {
-          // Check if now visible
-          if (isBlockVisible(nx, ny, nz)) {
-            // Generate block - add as instance
-            addInstance(nx, ny, nz);
-          }
-        }
-      }
-    } else if (e.button === 2) {
+  mouseDown = true;
+  mouseButton = e.button;
+  
+  if (e.button === 0) {
+    startMining();
+  } else if (e.button === 2) {
+    const blockHits = getBlockIntersects();
+    if (blockHits.length > 0) {
+      const hit = blockHits[0];
       const newPos = hit.object.position.clone().add(hit.face.normal);
       placeBlock(newPos);
+    } else {
+      const groundHit = getGroundIntersect();
+      if (groundHit) {
+        const pos = groundHit.point.clone().floor().addScalar(0.5);
+        pos.y = 0.5;
+        placeBlock(pos);
+      }
     }
-  } else {
-    const groundHit = getGroundIntersect();
-    if (groundHit && e.button === 2) {
-      const pos = groundHit.point.clone().floor().addScalar(0.5);
-      pos.y = 0.5;
-      placeBlock(pos);
-    }
+  }
+});
+
+document.addEventListener('mouseup', e => {
+  if (e.button === 0) {
+    mouseDown = false;
+    stopMining();
   }
 });
 
