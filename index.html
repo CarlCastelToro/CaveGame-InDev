@@ -1000,6 +1000,7 @@ stoneInstancedMesh.instanceMatrix.needsUpdate = true;
 const instanceKeyToId = new Map(); // key -> instanceId
 const instanceIdToKey = new Map(); // instanceId -> key
 let instanceCount = 0;
+let instanceMatrixDirty = false;
 
 // Temporary matrix for setting instances
 const tempMatrix = new THREE.Matrix4();
@@ -1025,7 +1026,7 @@ function addInstance(x, y, z) {
   const matrix = new THREE.Matrix4();
   matrix.setPosition(x + 0.5, y + 0.5, z + 0.5);
   stoneInstancedMesh.setMatrixAt(id, matrix);
-  stoneInstancedMesh.instanceMatrix.needsUpdate = true;
+  instanceMatrixDirty = true;
   
   instanceKeyToId.set(key, id);
   instanceIdToKey.set(id, key);
@@ -1054,7 +1055,7 @@ function removeInstance(key) {
   // Clear last instance with zero scale
   const zeroMatrix = new THREE.Matrix4().makeScale(0, 0, 0);
   stoneInstancedMesh.setMatrixAt(lastId, zeroMatrix);
-  stoneInstancedMesh.instanceMatrix.needsUpdate = true;
+  instanceMatrixDirty = true;
   
   instanceCount--;
   instanceKeyToId.delete(key);
@@ -2004,6 +2005,12 @@ function animate() {
   requestAnimationFrame(animate);
   const delta = Math.min(clock.getDelta(), 0.05);
   update(delta);
+  
+  // Batch update instance matrix
+  if (instanceMatrixDirty) {
+    stoneInstancedMesh.instanceMatrix.needsUpdate = true;
+    instanceMatrixDirty = false;
+  }
   
   // Update frustum for culling (temporarily disabled for debugging)
   // projScreenMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse);
