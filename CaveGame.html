@@ -925,7 +925,7 @@ canvas { display: block; }
     if (craftingGrid[index]) {
       var item = craftingGrid[index];
       craftingGrid[index] = null;
-      window._addToHotbar(item.type, item.count);
+      window._addToHotbar(item.type, item.count, item.durability);
       window._renderCraftingGrid();
     }
   };
@@ -1014,6 +1014,7 @@ canvas { display: block; }
     for (var i = 0; i < 9; i++) {
       if (!craftingGrid[i]) {
         craftingGrid[i] = { type: item.type, count: 1 };
+        if (item.durability !== undefined) craftingGrid[i].durability = item.durability;
         item.count--;
         if (item.count <= 0) {
           hotbarData[index] = null;
